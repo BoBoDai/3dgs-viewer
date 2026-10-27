@@ -1,9 +1,7 @@
 .DS_Store
 .idea/
 
-# Python / SHARP
-.venv/
-ml-sharp/
+# Python
 __pycache__/
 *.pyc
 
@@ -13,8 +11,7 @@ web/node_modules/
 tools/pw/node_modules/
 web/dist/
 
-# 生成物（体积大，按需重新生成）
-output/
+# 模型文件（体积大，按需准备）
 web/public/models/*.ply
 
 # MediaPipe 运行时（setup.sh 复制/下载，体积大）

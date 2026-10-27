@@ -1,6 +1,7 @@
-"""生成一个 SHARP 风格的测试 PLY（不依赖模型），用于验证前端加载链路。
+"""生成一个 3DGS 风格的测试 PLY（不依赖模型），用于验证前端加载链路。
 
-用法: .venv/bin/python tools/make_test_ply.py web/public/models/test.ply
+用法: python3 tools/make_test_ply.py web/public/models/test.ply
+依赖: numpy、plyfile
 """
 
 import sys
@@ -44,7 +45,7 @@ def main(path: str) -> None:
     vertex = np.empty(n, dtype=dtype)
     vertex[:] = list(map(tuple, attrs))
 
-    # 复制 SHARP 的附加元素，确认解析器能容忍非 vertex 元素
+    # 附带一些非 vertex 元素，确认解析器能容忍它们
     extra = []
     for element_name, values, fmt in [
         ("image_size", [640, 480], "u4"),

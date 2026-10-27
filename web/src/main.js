@@ -4,11 +4,8 @@ import { HandRig, HandTracker } from "./hand.js";
 import { ManoHandRig } from "./mano.js";
 
 const params = new URLSearchParams(location.search);
-const DEFAULT_FOV = Number(params.get("fov")) || 55;
-// 模型保持 SHARP 的度量尺度与真实位置，只通过视场角“退后取景”，
-// 这样初始画面和输入照片的透视一致，不会把场景压扁。
-const FIT_FRACTION = 0.55; // 主体大约占画面高度的比例
-const GENERIC_MARGIN = 1.15; // 第三方模型自动取景时给包围球留的边距
+const DEFAULT_FOV = 55;
+const GENERIC_MARGIN = 1.15; // 自动取景时给包围球留的边距
 
 const els = {
   video: document.getElementById("camera"),
@@ -50,8 +47,7 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(0, 0, 0);
 
-// SHARP 的高斯带抗锯齿训练，按文档建议关掉 preBlur、改用 blur 补偿，
-// 否则轮廓外会出现一圈发白的“光晕”。
+// 关掉 preBlur、改用少量 blur，避免高斯轮廓外出现发白的“光晕”。
 const splatRenderer = new GaussianSplatRenderer({
   renderer,
   preBlurAmount: 0,
@@ -69,7 +65,7 @@ pivot.add(orient);
 orient.add(holder);
 scene.add(pivot);
 
-pivot.position.set(0, 0, -3);
+pivot.position.set(0, 0, 0);
 
 // 手部模型：优先用 MANO 蒙皮手，加载失败时退回胶囊体占位手。
 // 两者的驱动接口一致，后续换成 3DGS 手时也可以复用同一套输入。
@@ -115,25 +111,15 @@ const state = {
   splat: null,
   modelName: "",
   numSplats: 0,
-  // "sharp"：SHARP/OpenCV 约定（相机在原点、主体在 +Z），用视场角取景；
-  // "generic"：其他来源的 PLY 没有可靠相机约定，自动居中并用距离取景。
-  mode: "sharp",
-  basePosition: new THREE.Vector3(0, 0, -3), // 模型在原始重建中的位置
-  tanX: 0.6, // 重建点云的半张角正切，用于取景
-  tanY: 0.4,
-  radius: 1, // generic 模式的包围球半径
-  baseDistance: 3, // generic 模式的相机距离
-  nearPlane: 0.01, // SHARP 模式的相机裁剪面，随模型尺度调整
-  farPlane: 200,
-  baseFov: 55, // 取景后的基准视场角，滚轮在此基础上变焦
+  radius: 1, // 模型包围球半径（按 2%~98% 分位数）
+  baseDistance: 3, // 自动取景的相机距离
+  baseFov: 55, // 基准视场角
   zoom: 1,
   spin: false,
   spinAngle: 0,
   // OpenCV/COLMAP 约定是 +Y 向下，默认做一次 X 轴 180° 翻转；
   // ?up=1 表示文件已经是 +Y 向上（例如 Blender 导出的模型）。
   upFlipped: params.get("up") !== "1",
-  // ?raw=1 保留 SHARP 的度量尺度与原始位置，用于和输入照片对比
-  raw: new URLSearchParams(location.search).has("raw"),
   handEnabled: false,
   handLoading: false,
   frames: 0,
@@ -169,14 +155,11 @@ function splatCountText(count) {
 }
 
 function modelSummary() {
-  const mode = state.mode === "generic" ? " · 自动取景" : "";
-  return `${state.modelName} · ${splatCountText(state.numSplats)}${mode}`;
+  return `${state.modelName} · ${splatCountText(state.numSplats)}`;
 }
 
 function idleHint() {
-  return state.mode === "generic"
-    ? "自动取景 · 滚轮缩放 · 自旋展示 · 方向不对可点“翻转”"
-    : "滚轮缩放 · 自旋展示 · 拖入 .ply 换模型";
+  return "自动取景 · 滚轮缩放 · 自旋展示 · 方向不对可点“翻转”";
 }
 
 /** 切换“Y 轴是否翻转”，用于校正第三方模型的 up 方向。 */
@@ -229,43 +212,18 @@ async function loadSplat(source, label) {
     return;
   }
 
-  // SHARP 会散落少量远离主体的高斯，直接包围盒会被它们撑大。
+  // 重建结果都会散落少量远离主体的高斯，直接包围盒会被它们撑大。
   // 用 2%~98% 分位数取“主体”范围。
   const fit = robustFit(mesh);
-  // SHARP 的输入是单张照片：所有高斯都在 +Z 前方、且张角有限。
-  // 其他来源的 PLY 往往以场景原点为中心（相机在里面），套用这套取景会看不见模型。
-  state.mode = isSharpLike(fit) ? "sharp" : "generic";
-  // 裁剪面跟随模型尺度，避免厘米/毫米级单位的模型被固定 near/far 裁掉
-  state.nearPlane = Math.max(fit.zMin * 0.5, 1e-4);
-  state.farPlane = Math.max(fit.zMax * 2 + 1e-4, state.nearPlane * 10);
-  const useRaw = state.raw && state.mode === "sharp";
 
-  if (useRaw) {
-    pivot.position.set(0, 0, 0);
-    state.basePosition.set(0, 0, 0);
-    state.baseFov = DEFAULT_FOV;
-    applyUpFlip(true);
-  } else if (state.mode === "sharp") {
-    // SHARP 模式：把主体中心挪到原点，但保留度量尺度与原始深度，
-    // pivot 放回 Rt(center)，初始画面和输入照片的透视完全一致。
-    mesh.position.copy(fit.center).multiplyScalar(-1);
-    state.tanX = fit.tanX;
-    state.tanY = fit.tanY;
-    state.basePosition.set(fit.center.x, -fit.center.y, -fit.center.z);
-    pivot.position.copy(state.basePosition);
-    applyUpFlip(true);
-    applyFit();
-  } else {
-    // 通用模式：自动居中 + 用包围球和固定视场角算出相机距离。
-    mesh.position.copy(fit.center).multiplyScalar(-1);
-    state.radius = fit.radius;
-    state.basePosition.set(0, 0, 0);
-    pivot.position.set(0, 0, 0);
-    // 每个新模型都回到默认 up 约定，避免沿用上一个模型的翻转状态
-    applyUpFlip(params.get("up") !== "1");
-    applyFit();
-  }
-  els.btnFlip.disabled = state.mode !== "generic";
+  // 自动居中 + 用包围球和固定视场角算出相机距离。
+  mesh.position.copy(fit.center).multiplyScalar(-1);
+  state.radius = fit.radius;
+  state.zoom = 1;
+  // 每个新模型都回到默认 up 约定，避免沿用上一个模型的翻转状态
+  applyUpFlip(params.get("up") !== "1");
+  applyFit();
+  els.btnFlip.disabled = false;
 
   state.splat = mesh;
   state.modelName = label;
@@ -282,9 +240,6 @@ function robustFit(mesh) {
   const xs = [];
   const ys = [];
   const zs = [];
-  const ratioX = [];
-  const ratioY = [];
-  let inFront = 0;
   const total = mesh.numSplats || 1;
   const stride = Math.max(1, Math.floor(total / 200000));
 
@@ -294,11 +249,6 @@ function robustFit(mesh) {
     xs.push(x);
     ys.push(y);
     zs.push(z);
-    if (z > 0.05) {
-      inFront += 1;
-      ratioX.push(Math.abs(x) / z);
-      ratioY.push(Math.abs(y) / z);
-    }
   });
 
   if (xs.length === 0) {
@@ -306,11 +256,6 @@ function robustFit(mesh) {
       center: new THREE.Vector3(),
       size: new THREE.Vector3(2, 2, 2),
       radius: 1,
-      tanX: Infinity,
-      tanY: Infinity,
-      inFrontRatio: 0,
-      zMin: 0,
-      zMax: 1,
     };
   }
 
@@ -330,55 +275,20 @@ function robustFit(mesh) {
   return {
     center: lo.clone().add(hi).multiplyScalar(0.5),
     size,
-    // 用“主体”包围球的半径做通用取景，离群点不会把画面撑爆
+    // 用“主体”包围球的半径取景，离群点不会把画面撑爆
     radius: Math.max(size.length() * 0.5, 1e-4),
-    // 重建点云的张角 ≈ 原照片的视场角，用它来做 SHARP 取景
-    tanX: percentile(ratioX, 0.995),
-    tanY: percentile(ratioY, 0.995),
-    inFrontRatio: inFront / xs.length,
-    // 主体在相机坐标系里的深度范围（SHARP 模式用来定裁剪面）
-    zMin: percentile(zs, 0.001),
-    zMax: percentile(zs, 0.999),
   };
 }
 
-/**
- * 判断模型是否遵循 SHARP 的相机约定：高斯几乎全部落在 +Z 前方，
- * 而且张角有限（相机在场景外，而不是被场景包住）。
- */
-function isSharpLike(fit) {
-  return (
-    Number.isFinite(fit.tanX) &&
-    Number.isFinite(fit.tanY) &&
-    fit.center.z > 0.05 &&
-    fit.inFrontRatio > 0.95 &&
-    fit.tanX < 3 &&
-    fit.tanY < 3
-  );
-}
-
-/** 用视场角给主体“取景”，模型本身不缩放，透视保持原样 */
+/** 自动取景：模型居中，相机退到包围球外，用固定视场角把模型装进画面。 */
 function applyFit() {
-  if (state.mode === "generic") {
-    applyGenericFit();
-    return;
-  }
-  if (state.raw) return;
-  const tanHalf = Math.max(state.tanY, state.tanX / camera.aspect) / FIT_FRACTION;
-  state.baseFov = clamp((2 * Math.atan(tanHalf) * 180) / Math.PI, 30, 90);
-  camera.fov = state.baseFov;
-  camera.updateProjectionMatrix();
-}
-
-/** 通用取景：模型居中，相机退到包围球外，用固定视场角把模型装进画面。 */
-function applyGenericFit() {
   const verticalFov = (DEFAULT_FOV * Math.PI) / 180;
   const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
   const halfAngle = Math.max(1e-3, Math.min(verticalFov, horizontalFov) / 2);
   state.baseFov = DEFAULT_FOV;
   state.baseDistance = (state.radius * GENERIC_MARGIN) / Math.sin(halfAngle);
   camera.fov = state.baseFov;
-  updateGenericCamera(1);
+  updateGenericCamera(state.zoom);
 }
 
 function updateGenericCamera(zoom) {
@@ -563,9 +473,8 @@ function toggleHandMode() {
 window.addEventListener(
   "wheel",
   (event) => {
-    // 滚轮相当于推拉相机；通用模型场景尺度不确定，给更大的推拉范围
-    const [lo, hi] = state.mode === "generic" ? [0.5, 3] : [0.8, 1.25];
-    state.zoom = clamp(state.zoom * (1 - Math.sign(event.deltaY) * 0.08), lo, hi);
+    // 滚轮相当于推拉相机；场景尺度不确定，给较大的推拉范围
+    state.zoom = clamp(state.zoom * (1 - Math.sign(event.deltaY) * 0.08), 0.5, 3);
   },
   { passive: true },
 );
@@ -579,9 +488,13 @@ function frame(now) {
   lastFrame = now;
 
   if (state.handEnabled) {
-    // 手部模式：固定相机，手模型按各自在画面里的位置摆放
+    // 手部模式：固定相机，手模型按各自在画面里的位置摆放。
+    // 手部场景的实际尺度约 0.5，不能沿用 3DGS 模型按包围球算出的 near/far，
+    // 否则手会落在近裁剪面之前被整只裁掉。
     camera.fov = clamp(55 / state.zoom, 32, 85);
     camera.aspect = window.innerWidth / window.innerHeight;
+    camera.near = 0.01;
+    camera.far = 20;
     camera.updateProjectionMatrix();
     camera.position.set(0, 0, 0);
     camera.quaternion.identity();
@@ -675,21 +588,9 @@ function frame(now) {
     fallbackHand.tick(dt, now);
   } else {
     camera.aspect = window.innerWidth / window.innerHeight;
-    if (state.mode === "generic") {
-      // 通用模型：相机退到场景外，滚轮推拉相机而不是改视场角
-      updateGenericCamera(state.zoom);
-    } else {
-      // SHARP 模型：滚轮变焦用视场角，避免近距离缩放的透视爆炸。
-      camera.fov = state.raw ? state.baseFov : clamp(state.baseFov / state.zoom, 40, 100);
-      camera.near = state.nearPlane;
-      camera.far = state.farPlane;
-      camera.position.set(0, 0, 0);
-      camera.updateProjectionMatrix();
-    }
+    // 相机退到场景外，滚轮推拉相机而不是改视场角
+    updateGenericCamera(state.zoom);
     camera.quaternion.identity();
-
-    // 模型保持居中，只改自身姿态
-    pivot.position.copy(state.basePosition);
 
     // 自旋：只改模型自身姿态
     if (state.spin) state.spinAngle += dt * 0.5;
@@ -722,7 +623,6 @@ els.fileInput.addEventListener("change", () => {
 });
 
 els.btnFlip.addEventListener("click", () => {
-  if (state.mode !== "generic") return;
   applyUpFlip(!state.upFlipped);
 });
 
