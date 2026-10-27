@@ -14,6 +14,9 @@ web/dist/
 # 模型文件（体积大，按需准备）
 web/public/models/*.ply
 
+# MANO 派生资产：仅本地生成，受研究许可限制，不入库
+web/public/models/mano_*.json
+
 # MediaPipe wasm 运行时（setup.sh 从 node_modules 复制）
 web/public/wasm/
 

@@ -24,10 +24,9 @@ and put it under `web/public/models/`.
   - `tools/export_mano.py`: Python 3 + numpy (MANO pkl → JSON);
   - `tools/make_test_ply.py`: numpy + plyfile;
   - `tools/pw/track.js`: needs a `/tmp/hand.y4m` pre-generated with ffmpeg.
-- **MANO assets**: `web/public/models/mano_{right,left}.json` are committed so hand mode works out of the
-  box, but they remain subject to the MANO research license (Max Planck). Check the upstream terms before
-  commercial use or public redistribution. Regenerating them requires the pkl from the
-  [MANO website](https://mano.is.tue.mpg.de/).
+- **MANO assets**: `mano_{right,left}.json` are **not committed** (research license; gitignored).
+  Generate them locally with `tools/export_mano.py` from the pkl downloaded at the
+  [MANO website](https://mano.is.tue.mpg.de/). Until they exist, hand mode falls back to the capsule hand.
 
 ## Commands
 
@@ -141,12 +140,12 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 
 - **Default scene**: `web/public/models/The Fruit Bowl.sog` (13 MB, ~750K splats, CC BY 4.0;
   attribution required, commercial use allowed). `loadDefaultModel()` loads it when no `?model=` is
-  given and falls back to “默认模型加载失败” if missing. The SOG is currently staged for commit.
-- `web/public/models/*.ply` and `web/public/wasm/` are gitignored: the model files are large, and the wasm
-  runtime is copied from `node_modules` by `scripts/setup.sh`. `.sog` / `.spz` / `.rad` are **not**
-  ignored; the default SOG is currently staged.
-- `web/public/models/mano_{right,left}.json` and `hand_landmarker.task` are committed so hand mode works
-  without extra downloads; see `web/public/models/NOTICE.md` for the MANO license note.
+  given and falls back to “默认模型加载失败” if missing. The SOG is tracked.
+- `web/public/models/*.ply`, `web/public/models/mano_*.json`, and `web/public/wasm/` are gitignored:
+  the model files are large and the wasm runtime is copied from `node_modules` by `scripts/setup.sh`.
+  `.sog` / `.spz` / `.rad` are **not** ignored; the default SOG is tracked.
+- `hand_landmarker.task` is committed so hand mode has its detector; `mano_*.json` are local-only and
+  must be generated with `tools/export_mano.py`. See `web/public/models/NOTICE.md` for the MANO license.
 - Vite maps `web/public` to the site root, so code hardcodes `/wasm` and `/models/...`.
 - `web/dist`, `node_modules`, `.idea`, and `.DS_Store` are never committed.
 
@@ -169,11 +168,11 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 
 ### What goes into a commit
 
-- **Source, docs, config and the hand assets.** Never commit `node_modules/`, `web/dist/`,
-  `web/public/models/*.ply`, `web/public/wasm/`, `.idea/`, or OS files.
-- **Hand assets are committed intentionally**: `mano_{right,left}.json` and `hand_landmarker.task` ship
-  with the repo so hand mode needs no extra download. Keep `web/public/models/NOTICE.md`; never add the
-  raw MANO pkl.
+- **Source, docs, config and permissive assets.** Never commit `node_modules/`, `web/dist/`,
+  `web/public/models/*.ply`, `web/public/models/mano_*.json`, `web/public/wasm/`, `.idea/`, or OS files.
+- **MediaPipe `hand_landmarker.task` is committed intentionally** so hand mode has its detector.
+  `mano_*.json` are local-only and gitignored; never commit the raw MANO pkl or the generated JSON.
+  Keep `web/public/models/NOTICE.md`.
 - **No `git add -f`** to bypass `.gitignore` for generated output.
 - Keep related changes together; keep pure refactors separate from behavior changes.
 

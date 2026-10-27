@@ -37,15 +37,17 @@ cd web && npm run dev
 [SuperSplat](https://superspl.at/scene/d8ba72a6)）：需要署名，允许商用。
 详见 `web/public/models/NOTICE.md`。
 
-`web/public/models/mano_right.json` / `mano_left.json` 已随仓库提供，手部同步开箱即用；
-它们由 `tools/export_mano.py` 从 MANO pkl 导出。MANO 模型仅限非商业研究，推送到公开仓库
-或商用前请先确认 [MANO 官网](https://mano.is.tue.mpg.de/) 的许可条款
-（见 `web/public/models/NOTICE.md`）。如需重新导出（需要 numpy）：
+MANO 派生 JSON **不随仓库提供**（受研究许可限制，`mano_*.json` 已 gitignore）。
+本地需要手部同步时，先从 [MANO 官网](https://mano.is.tue.mpg.de/) 下载 pkl，再运行
+（需要 numpy）：
 
 ```bash
 python3 -I tools/export_mano.py MANO_RIGHT.pkl web/public/models/mano_right.json
 python3 -I tools/export_mano.py MANO_LEFT.pkl  web/public/models/mano_left.json
 ```
+
+生成前手部模式会退回胶囊体占位手；MANO 模型仅限非商业研究，商用前请确认许可条款
+（见 `web/public/models/NOTICE.md`）。
 
 ## 自动取景
 
@@ -108,7 +110,7 @@ MANO 模型和由它导出的 JSON 仅限研究用途，商用前需确认 Max P
     ├── src/hand.js         # 胶囊体占位手（MANO 加载失败时兜底）
     ├── src/viewer.js       # 通用 PLY 浏览器原型（3DGS / 网格 / 点云）
     ├── src/ply-detect.js   # PLY 头部解析与类型判断
-    ├── public/models/      # 默认 SOG；hand_landmarker.task、mano_*.json
+    ├── public/models/      # 默认 SOG；hand_landmarker.task；本地生成的 mano_*.json
     └── index.html
 ```
 
