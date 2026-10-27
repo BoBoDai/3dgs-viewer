@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GaussianSplatRenderer, SplatMesh } from "gaussian-splat-lite";
 import { HandRig, HandTracker } from "./hand.js";
 import { ManoHandRig } from "./mano.js";
@@ -36,9 +37,18 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+// 手部模型是 PBR 材质，用 ACES 压高光，避免直射灯在皮肤上过曝
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
 els.canvasHost.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
+
+// 给 MANO/占位手补一层环境反射，纯直射灯会让低模手看起来像塑料
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.35;
+pmrem.dispose();
 const camera = new THREE.PerspectiveCamera(
   DEFAULT_FOV,
   window.innerWidth / window.innerHeight,
@@ -97,13 +107,17 @@ function hideAllHandModels() {
   }
 }
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x1e293b, 2.2));
-const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.9));
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
 keyLight.position.set(1.2, 2.2, 3);
 scene.add(keyLight);
-const fillLight = new THREE.DirectionalLight(0x93c5fd, 1.0);
+const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.6);
 fillLight.position.set(-2, 0.5, 2);
 scene.add(fillLight);
+// 背后的轮廓光，把手指从深色背景里勾出来
+const rimLight = new THREE.DirectionalLight(0xffffff, 1.0);
+rimLight.position.set(-1.5, 1.2, -2.5);
+scene.add(rimLight);
 
 // ---------------------------------------------------------------- State
 
