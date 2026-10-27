@@ -34,10 +34,48 @@ const renderer = new THREE.WebGLRenderer({
   alpha: true,
   powerPreference: "high-performance",
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// 大模型很容易被填充率拖死。默认把 DPR 压到 1.5，
+// 拖动/缩放期间再降到 0.7 倍，停手 220ms 后恢复清晰度。
+const DPR_CAP = Number(params.get("dpr")) || 1.5;
+const HIGH_DPR = Math.max(
+  0.75,
+  Math.min(window.devicePixelRatio || 1, DPR_CAP),
+);
+const LOW_DPR = Math.max(0.75, HIGH_DPR * 0.7);
+renderer.setPixelRatio(HIGH_DPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+// 交互期间临时降分辨率，停手后恢复；这是大模型最直接的减负手段
+let dprRestoreTimer = 0;
+function setInteractionDpr(low) {
+  clearTimeout(dprRestoreTimer);
+  if (low) {
+    if (renderer.getPixelRatio() !== LOW_DPR) {
+      renderer.setPixelRatio(LOW_DPR);
+    }
+  } else {
+    dprRestoreTimer = setTimeout(() => {
+      if (renderer.getPixelRatio() !== HIGH_DPR) {
+        renderer.setPixelRatio(HIGH_DPR);
+      }
+    }, 220);
+  }
+}
+
+const interactionCanvas = renderer.domElement;
+interactionCanvas.addEventListener("pointerdown", () => setInteractionDpr(true));
+interactionCanvas.addEventListener("pointerup", () => setInteractionDpr(false));
+interactionCanvas.addEventListener("pointercancel", () => setInteractionDpr(false));
+interactionCanvas.addEventListener(
+  "wheel",
+  () => {
+    setInteractionDpr(true);
+    setInteractionDpr(false);
+  },
+  { passive: true },
+);
 // 手部模型是 PBR 材质，用 ACES 压高光，避免直射灯在皮肤上过曝
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.95;
@@ -134,6 +172,13 @@ const splatRenderer = new GaussianSplatRenderer({
   renderer,
   preBlurAmount: 0,
   blurAmount: 0.3,
+  // 大模型优先保帧率：裁掉软边缘、极小、极淡和视口外的高斯
+  maxStdDev: Math.sqrt(4),
+  minPixelRadius: 1.5,
+  minAlpha: 2 / 255,
+  clipXY: 1.0,
+  // WebGL 下限制排序频率，避免拖动时排序占满主线程
+  minSortIntervalMs: 16,
 });
 scene.add(splatRenderer);
 

@@ -110,8 +110,13 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
   vector, and target on exit.
 - Up axis: the default assumes OpenCV/COLMAP (+Y down) and flips 180° around X; `?up=1` skips the flip,
   and the “Flip” toolbar button toggles it manually.
-- Only three URL parameters: `?model=` (a filename under `web/public/models/` or a full URL), `?hand=1`,
-  and `?up=1`. `?raw` / `?fov` were removed together with SHARP.
+- URL parameters: `?model=` (a filename under `web/public/models/` or a full URL), `?hand=1`, `?up=1`,
+  and `?dpr=` (render pixel-ratio cap, default 1.5). `?raw` / `?fov` were removed together with SHARP.
+- Performance: DPR is capped at 1.5 and dropped to 0.7× during pointer/wheel interaction, restoring
+  after 220 ms. The splat renderer uses `maxStdDev: sqrt(4)`, `minPixelRadius: 1.5`,
+  `minAlpha: 2/255`, `clipXY: 1`, and `minSortIntervalMs: 16`. Multi-million-splat models need SOG/RAD
+  LOD streaming with a splat budget (or offline pruning); a FastAPI/MLX backend can prepare assets but
+  does not change client-side FPS.
 - Debug hooks: `window.__demo` (scene/camera/state/loadSplat) and
   `window.__hand` (rigs/tracker/enable/disable).
 

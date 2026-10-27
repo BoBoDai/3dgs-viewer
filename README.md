@@ -59,6 +59,16 @@ python3 -I tools/export_mano.py MANO_LEFT.pkl  web/public/models/mano_left.json
 注意：首页只渲染带 3DGS 属性的 PLY / 压缩 3DGS 格式；纯点云 PLY（只有 x/y/z/颜色，
 没有 scale/rot/opacity/SH）和普通三角网格不在当前首页的支持范围内。
 
+## 大模型性能
+
+- 默认 DPR 上限 1.5；拖动/缩放时临时降到 0.7 倍，停手 220 ms 后恢复清晰度。
+  `?dpr=1` 更快，`?dpr=2` 更清晰（按设备像素比封顶）。
+- 渲染器已按大模型调优：裁掉软边缘、极小、极淡和视口外的高斯，并限制 WebGL 排序频率。
+- 百万级以上模型，真正的解法是减少每帧绘制数量：转成 SOG/RAD 并生成 LOD，
+  用 `SogStreamScheduler` / `RadStreamScheduler` + `splatBudget`，或离线剪枝低不透明度高斯。
+- Python/FastAPI 后端适合做这些离线预处理和分发，但不参与浏览器每帧渲染；
+  服务端渲染 + 视频串流是另一套架构。
+
 ## 实时手部同步（MANO 手）
 
 点 `手部同步` 或打开 `?hand=1`，会把 MediaPipe 的 21 个关键点映射到最多两只 MANO 蒙皮手：
@@ -101,7 +111,8 @@ MANO 模型和由它导出的 JSON 仅限研究用途，商用前需确认 Max P
 
 - `?model=你的模型.ply` 加载 `web/public/models/` 下的模型；也可以直接给完整 URL，例如 `?model=https://…/scene.sog`；
 - `?hand=1` 直接进入手部同步模式；
-- `?up=1` 表示模型已经是 +Y 向上，不做默认的 X 轴翻转。
+- `?up=1` 表示模型已经是 +Y 向上，不做默认的 X 轴翻转；
+- `?dpr=1.5` 控制渲染倍率上限（默认 1.5；大模型可降到 1.0，清晰度优先可设 2）。
 
 ## 实测
 
