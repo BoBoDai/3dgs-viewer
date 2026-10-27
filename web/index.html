@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2338bdf8'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%230b0d12'/%3E%3C/svg%3E"
+    />
+    <title>3DGS · 模型预览</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <video id="camera" playsinline muted autoplay></video>
+    <div id="canvas-host"></div>
+
+    <div id="hud">
+      <div class="panel" id="status-panel">
+        <h1>3DGS <span>模型预览</span></h1>
+        <dl>
+          <dt>模型</dt><dd id="model-status">加载中…</dd>
+          <dt>手部</dt><dd id="hand-status">关</dd>
+          <dt>渲染</dt><dd id="fps">–</dd>
+        </dl>
+        <p class="hint" id="hint">
+          滚轮缩放 · 自旋展示 · 拖入 .ply 换模型
+        </p>
+      </div>
+
+      <div class="panel" id="controls">
+        <button id="btn-camera" class="primary">开启摄像头</button>
+        <button id="btn-hand">手部同步：关</button>
+        <button id="btn-load">载入 .ply</button>
+        <button id="btn-spin">自旋：关</button>
+        <button id="btn-reset">复位</button>
+        <input id="file-input" type="file" accept=".ply,.spz,.sog,.rad" hidden />
+      </div>
+    </div>
+
+    <div id="drop-overlay"><span>松开以载入模型</span></div>
+    <div id="toast" role="status"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+.DS_Store
+.idea/
+
+# Python / SHARP
+.venv/
+ml-sharp/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+web/node_modules/
+tools/pw/node_modules/
+web/dist/
+
+# 生成物（体积大，按需重新生成）
+output/
+web/public/models/*.ply
+
+# MediaPipe 运行时（setup.sh 复制/下载，体积大）
+web/public/wasm/
+web/public/models/hand_landmarker.task
+
+# MANO 派生资产：受 MANO 研究许可限制，用 tools/export_mano.py 本地生成
+web/public/models/mano_*.json
