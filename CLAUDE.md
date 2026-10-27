@@ -24,9 +24,10 @@ and put it under `web/public/models/`.
   - `tools/export_mano.py`: Python 3 + numpy (MANO pkl → JSON);
   - `tools/make_test_ply.py`: numpy + plyfile;
   - `tools/pw/track.js`: needs a `/tmp/hand.y4m` pre-generated with ffmpeg.
-- **MANO assets**: the pkl must be registered and downloaded from the
-  [MANO website](https://mano.is.tue.mpg.de/); the model and exported JSON are research-only and must not
-  be committed.
+- **MANO assets**: `web/public/models/mano_{right,left}.json` are committed so hand mode works out of the
+  box, but they remain subject to the MANO research license (Max Planck). Check the upstream terms before
+  commercial use or public redistribution. Regenerating them requires the pkl from the
+  [MANO website](https://mano.is.tue.mpg.de/).
 
 ## Commands
 
@@ -119,9 +120,10 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 
 ### Assets and ignored files
 
-- `web/public/models/*.ply`, `web/public/models/mano_*.json`, `web/public/wasm/`, and
-  `web/public/models/hand_landmarker.task` are all gitignored: either too large or restricted by the MANO
-  license.
+- `web/public/models/*.ply` and `web/public/wasm/` are gitignored: the model files are large, and the wasm
+  runtime is copied from `node_modules` by `scripts/setup.sh`.
+- `web/public/models/mano_{right,left}.json` and `hand_landmarker.task` are committed so hand mode works
+  without extra downloads; see `web/public/models/NOTICE.md` for the MANO license note.
 - Vite maps `web/public` to the site root, so code hardcodes `/wasm` and `/models/...`.
 - `assets/*.jpg` are historical sample inputs; the repo no longer has a generator script.
 - `web/dist`, `node_modules`, `.idea`, and `.DS_Store` are never committed.
@@ -145,10 +147,11 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 
 ### What goes into a commit
 
-- **Source, docs and config only.** Never commit `node_modules/`, `web/dist/`,
-  `web/public/models/*.ply`, `web/public/models/mano_*.json`, `web/public/wasm/`,
-  `hand_landmarker.task`, `.idea/`, or OS files.
-- **MANO assets are license-restricted** (Max Planck research license); they never enter the repository.
+- **Source, docs, config and the hand assets.** Never commit `node_modules/`, `web/dist/`,
+  `web/public/models/*.ply`, `web/public/wasm/`, `.idea/`, or OS files.
+- **Hand assets are committed intentionally**: `mano_{right,left}.json` and `hand_landmarker.task` ship
+  with the repo so hand mode needs no extra download. Keep `web/public/models/NOTICE.md`; never add the
+  raw MANO pkl.
 - **No `git add -f`** to bypass `.gitignore` for generated output.
 - Keep related changes together; keep pure refactors separate from behavior changes.
 

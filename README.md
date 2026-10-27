@@ -30,9 +30,10 @@ cd web && npm run dev
 点“手部同步”后主画面会切换成实时 MANO 手：最多两只、左右镜像、跟着手在画面里的位置摆；
 没有检测到手时不显示任何手模型。
 
-MANO 派生资产默认不提交（受 MANO 研究许可限制）。本机已生成到
-`web/public/models/mano_right.json` / `mano_left.json`；新环境需要先从
-[MANO 官网](https://mano.is.tue.mpg.de/) 下载 pkl，然后（需要 numpy）：
+`web/public/models/mano_right.json` / `mano_left.json` 已随仓库提供，手部同步开箱即用；
+它们由 `tools/export_mano.py` 从 MANO pkl 导出。MANO 模型仅限非商业研究，推送到公开仓库
+或商用前请先确认 [MANO 官网](https://mano.is.tue.mpg.de/) 的许可条款
+（见 `web/public/models/NOTICE.md`）。如需重新导出（需要 numpy）：
 
 ```bash
 python3 -I tools/export_mano.py MANO_RIGHT.pkl web/public/models/mano_right.json
