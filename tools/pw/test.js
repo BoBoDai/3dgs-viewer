@@ -14,7 +14,11 @@ const { chromium } = require("playwright");
     logs.push(`[requestfailed] ${req.url()} ${req.failure()?.errorText}`),
   );
 
-  const url = process.argv[2] || "http://localhost:5173/?model=scene.ply";
+  const url = process.argv[2];
+  if (!url) {
+    console.error("用法: node test.js <url> [screenshot]");
+    process.exit(1);
+  }
   await page.goto(url, { waitUntil: "domcontentloaded" });
 
   try {

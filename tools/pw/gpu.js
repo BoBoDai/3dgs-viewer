@@ -2,7 +2,12 @@ const { chromium } = require("playwright");
 (async () => {
   const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--no-proxy-server","--use-angle=metal","--enable-gpu"] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-  await page.goto("http://localhost:5173/?model=scene.ply");
+  const url = process.argv[2];
+  if (!url) {
+    console.error("用法: node gpu.js <url>");
+    process.exit(1);
+  }
+  await page.goto(url);
   await page.waitForFunction(() => window.__demo?.state.numSplats > 0, { timeout: 120000 });
   await page.waitForTimeout(6000);
   console.log(await page.evaluate(() => {

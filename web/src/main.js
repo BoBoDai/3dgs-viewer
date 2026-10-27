@@ -397,8 +397,15 @@ function updateClipping() {
 }
 
 function loadDefaultModel() {
-  // ?model= 可以是 web/public/models 下的文件名，也可以是完整的 http(s) URL
-  const name = new URLSearchParams(location.search).get("model") || "scene.ply";
+  // 仓库不再自带 3DGS 样例。?model= 可以是 web/public/models 下的文件名，
+  // 也可以是完整的 http(s) URL；没有传就等用户拖入/选择模型。
+  const name = params.get("model");
+  if (!name) {
+    setModelStatus("未加载模型", "warn");
+    els.hint.textContent = "拖入模型，或点“载入 .ply”";
+    return Promise.resolve();
+  }
+
   let url;
   if (/^(https?:)?\/\//i.test(name) || /^(data|blob):/i.test(name)) {
     url = name;

@@ -45,8 +45,8 @@ npm run preview
 cd tools/pw
 npm install
 npx playwright install chromium
-NO_PROXY=localhost,127.0.0.1,::1 node test.js "http://localhost:5173/?model=scene.ply" /tmp/out.png
-NO_PROXY=localhost,127.0.0.1,::1 node track.js /tmp/hand.y4m "http://localhost:5173/?hand=1&model=car.ply"
+NO_PROXY=localhost,127.0.0.1,::1 node test.js "http://localhost:5173/?model=your-model.ply" /tmp/out.png
+NO_PROXY=localhost,127.0.0.1,::1 node track.js /tmp/hand.y4m
 
 # Tools (any Python with numpy; -I avoids importing same-named modules from the current directory)
 python3 -I tools/export_mano.py MANO_RIGHT.pkl web/public/models/mano_right.json
@@ -125,20 +125,22 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
   with `scale.x = -1`, and screen positions use the mirrored coordinates too, so the main view matches the
   top-right preview.
 - The hand camera is fixed at the origin, and hands sit at `HAND_Z = -0.56`. **Hand mode must explicitly
-  set `camera.near = 0.01; camera.far = 20;`**; never inherit model-scale `near/far`—car.ply's
-  `near ≈ 1.57`, for example, clips the entire hand. This was a real regression after removing SHARP
-  framing; verify any camera change with `track.js`.
+  set `camera.near = 0.01; camera.far = 20;`**; never inherit model-scale `near/far`—a large model's
+  `near` can exceed the hand distance and clip the entire hand. This was a real regression after removing
+  SHARP framing; verify any camera change with `track.js`.
 - After 300 ms without a detected hand, all hand models are hidden. MediaPipe only runs inference when the
   video frame changes; the GPU delegate falls back to CPU.
 
 ### Assets and ignored files
 
+- **No 3DGS sample models are bundled.** `web/public/models/` contains only the hand assets
+  (`mano_{right,left}.json`, `hand_landmarker.task`, `NOTICE.md`); users bring their own models or pass a
+  `?model=` URL. `loadDefaultModel()` shows “未加载模型” when no `?model=` is given.
 - `web/public/models/*.ply` and `web/public/wasm/` are gitignored: the model files are large, and the wasm
   runtime is copied from `node_modules` by `scripts/setup.sh`.
 - `web/public/models/mano_{right,left}.json` and `hand_landmarker.task` are committed so hand mode works
   without extra downloads; see `web/public/models/NOTICE.md` for the MANO license note.
 - Vite maps `web/public` to the site root, so code hardcodes `/wasm` and `/models/...`.
-- `assets/*.jpg` are historical sample inputs; the repo no longer has a generator script.
 - `web/dist`, `node_modules`, `.idea`, and `.DS_Store` are never committed.
 
 ## Conventions

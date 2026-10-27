@@ -16,12 +16,14 @@ scripts/setup.sh
 
 # 2. 启动前端
 cd web && npm run dev
-# 打开 http://localhost:5173/?model=car.ply
+# 打开 http://localhost:5173/，把模型拖进页面，或点“载入 .ply”
+# 也可以 ?model=你的模型.ply，或 ?model=https://…/scene.sog
 # 手部同步：点“手部同步”，或直接打开 http://localhost:5173/?hand=1
 ```
 
-默认加载 `web/public/models/scene.ply`（可通过 `?model=` 切换）。
-也可以直接把任意模型拖进页面，或用“载入 .ply”按钮选择文件。
+仓库不附带 3DGS 样例模型：把模型放进 `web/public/models/` 后用 `?model=文件名` 打开，
+也可以直接拖进页面、用“载入 .ply”按钮选择，或给一个完整 URL。
+需要合成测试模型时，可以用 `tools/make_test_ply.py` 生成一个。
 
 支持 gaussian-splat-lite 能解码的格式：未压缩 `.ply`，以及 `.spz` / `.sog` / `.rad`。
 页面会自动识别并解码，不需要手动转换。
@@ -79,7 +81,6 @@ MANO 模型和由它导出的 JSON 仅限研究用途，商用前需确认 Max P
 
 ```
 3dgs/
-├── assets/                 # 示例图片
 ├── scripts/
 │   └── setup.sh            # 环境准备：前端依赖 + MediaPipe 运行时
 ├── tools/
@@ -92,13 +93,13 @@ MANO 模型和由它导出的 JSON 仅限研究用途，商用前需确认 Max P
     ├── src/hand.js         # 胶囊体占位手（MANO 加载失败时兜底）
     ├── src/viewer.js       # 通用 PLY 浏览器原型（3DGS / 网格 / 点云）
     ├── src/ply-detect.js   # PLY 头部解析与类型判断
-    ├── public/models/      # scene.ply、car.ply、mano_*.json
+    ├── public/models/      # 自行放入模型；hand_landmarker.task、mano_*.json
     └── index.html
 ```
 
 调试用的 URL 参数：
 
-- `?model=test.ply` 加载其他模型；也可以直接给完整 URL，例如 `?model=https://…/scene.ply`；
+- `?model=你的模型.ply` 加载 `web/public/models/` 下的模型；也可以直接给完整 URL，例如 `?model=https://…/scene.sog`；
 - `?hand=1` 直接进入手部同步模式；
 - `?up=1` 表示模型已经是 +Y 向上，不做默认的 X 轴翻转。
 

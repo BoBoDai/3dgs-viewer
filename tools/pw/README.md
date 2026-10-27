@@ -10,10 +10,10 @@ npx playwright install chromium
 
 先确保 `web` 已启动（`cd web && npm run dev`）。
 
-- `node test.js "http://[::1]:5173/?model=scene.ply" /tmp/out.png`：加载模型并截图；
-- `node gpu.js`：用本机 Chrome + Metal 测真实 GPU 帧率；
-- `node track.js /tmp/hand.y4m "http://localhost:5173/?hand=1&model=car.ply"`：
-  用假摄像头视频验证手部推理、左右镜像和关节角度。
+- `node test.js "http://localhost:5173/?model=你的模型.ply" /tmp/out.png`：加载模型并截图；
+- `node gpu.js "http://localhost:5173/?model=你的模型.ply"`：用本机 Chrome + Metal 测真实 GPU 帧率；
+- `node track.js /tmp/hand.y4m`：用假摄像头视频验证手部推理、左右镜像和关节角度；
+  默认进 `?hand=1`，不需要先加载 3DGS 模型。
 
 `track.js` 需要一个包含手的 y4m 视频。可以拿一张手的照片循环生成：
 
