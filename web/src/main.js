@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { GaussianSplatRenderer, SplatMesh } from "gaussian-splat-lite";
 import { HandRig, HandTracker } from "./hand.js";
 import { ManoHandRig } from "./mano.js";
@@ -56,6 +57,23 @@ const camera = new THREE.PerspectiveCamera(
   200,
 );
 camera.position.set(0, 0, 0);
+
+// 模型模式：左键拖动自由旋转、滚轮缩放、按住中键平移。
+// 用 TrackballControls 而不是 OrbitControls：前者可以连续翻过顶点/底点，
+// 不会在极角 0 / π 处撞到“空气墙”。手部模式会关闭它。
+const controls = new TrackballControls(camera, renderer.domElement);
+controls.rotateSpeed = 3.0;
+controls.zoomSpeed = 2.0;
+controls.panSpeed = 0.6;
+// CAD 手感：松手即停，不做惯性滑行
+controls.staticMoving = true;
+controls.enabled = false; // 有模型后才允许交互
+
+controls.mouseButtons = {
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.PAN,
+  RIGHT: null,
+};
 
 // 关掉 preBlur、改用少量 blur，避免高斯轮廓外出现发白的“光晕”。
 const splatRenderer = new GaussianSplatRenderer({
@@ -173,7 +191,7 @@ function modelSummary() {
 }
 
 function idleHint() {
-  return "自动取景 · 滚轮缩放 · 自旋展示 · 方向不对可点“翻转”";
+  return "左键拖动旋转 · 滚轮缩放 · 中键拖动平移";
 }
 
 /** 切换“Y 轴是否翻转”，用于校正第三方模型的 up 方向。 */
@@ -236,6 +254,7 @@ async function loadSplat(source, label) {
   state.zoom = 1;
   // 每个新模型都回到默认 up 约定，避免沿用上一个模型的翻转状态
   applyUpFlip(params.get("up") !== "1");
+  controls.enabled = true;
   applyFit();
   els.btnFlip.disabled = false;
 
@@ -294,23 +313,30 @@ function robustFit(mesh) {
   };
 }
 
-/** 自动取景：模型居中，相机退到包围球外，用固定视场角把模型装进画面。 */
+/** 自动取景：模型居中，相机退到包围球外，并重置轨道控制器。 */
 function applyFit() {
   const verticalFov = (DEFAULT_FOV * Math.PI) / 180;
   const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
   const halfAngle = Math.max(1e-3, Math.min(verticalFov, horizontalFov) / 2);
   state.baseFov = DEFAULT_FOV;
   state.baseDistance = (state.radius * GENERIC_MARGIN) / Math.sin(halfAngle);
+
   camera.fov = state.baseFov;
-  updateGenericCamera(state.zoom);
+  camera.up.set(0, 1, 0);
+  controls.target.set(0, 0, 0);
+  camera.position.set(0, 0, state.baseDistance);
+  controls.minDistance = Math.max(state.radius * 0.08, 1e-5);
+  controls.maxDistance = Math.max(state.radius * 20, state.baseDistance * 2);
+  camera.lookAt(controls.target);
+  updateClipping();
+  controls.update();
 }
 
-function updateGenericCamera(zoom) {
-  const distance = state.baseDistance / zoom;
-  camera.position.set(0, 0, distance);
-  // 场景尺度可能从毫米到公里，near/far 跟着包围球走，避免裁剪。
-  camera.near = Math.max(distance - state.radius * 2, distance * 0.01);
-  camera.far = distance + state.radius * 4;
+/** 轨道缩放改了相机距离，near/far 要跟着模型尺度走。 */
+function updateClipping() {
+  const distance = camera.position.distanceTo(controls.target);
+  camera.near = Math.max(distance - state.radius * 2, distance * 0.01, 1e-5);
+  camera.far = distance + state.radius * 4 + 1e-3;
   camera.updateProjectionMatrix();
 }
 
@@ -333,6 +359,7 @@ function loadDefaultModel() {
 let cameraStream = null;
 let handTracker = null;
 let handInitPromise = null;
+let savedView = null; // 进入手部模式前的模型相机姿态
 
 /** 小窗比例跟随摄像头的原生分辨率，避免 16:9 画面被塞进 4:3 的框里 */
 function syncCameraAspect() {
@@ -415,6 +442,16 @@ async function enableHandMode() {
   state.handLoading = true;
   state.handEnabled = true;
   state.zoom = 1;
+  savedView = {
+    position: camera.position.clone(),
+    quaternion: camera.quaternion.clone(),
+    up: camera.up.clone(),
+    target: controls.target.clone(),
+    fov: camera.fov,
+    near: camera.near,
+    far: camera.far,
+  };
+  controls.enabled = false;
   pivot.visible = false;
   els.btnHand.textContent = "手部同步：开";
   els.btnHand.classList.add("primary");
@@ -467,6 +504,22 @@ function disableHandMode() {
   }
   lastHandSeen = 0;
   pivot.visible = true;
+
+  // 回到进入手部模式前的模型视角
+  if (savedView) {
+    camera.position.copy(savedView.position);
+    camera.quaternion.copy(savedView.quaternion);
+    camera.up.copy(savedView.up);
+    camera.fov = savedView.fov;
+    camera.near = savedView.near;
+    camera.far = savedView.far;
+    controls.target.copy(savedView.target);
+    camera.updateProjectionMatrix();
+    savedView = null;
+  }
+  controls.enabled = !!state.splat;
+  if (controls.enabled) controls.update();
+
   els.btnHand.textContent = "手部同步：关";
   els.btnHand.classList.remove("primary");
   els.btnSpin.disabled = false;
@@ -487,11 +540,24 @@ function toggleHandMode() {
 window.addEventListener(
   "wheel",
   (event) => {
-    // 滚轮相当于推拉相机；场景尺度不确定，给较大的推拉范围
+    // 模型模式的滚轮由 OrbitControls 处理；手部模式没有控制器，用滚轮改视场角
+    if (!state.handEnabled) return;
     state.zoom = clamp(state.zoom * (1 - Math.sign(event.deltaY) * 0.08), 0.5, 3);
   },
   { passive: true },
 );
+
+// SolidWorks 的“缩放到合适大小”快捷键
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "f" && event.key !== "F") return;
+  if (
+    event.target instanceof HTMLInputElement ||
+    event.target instanceof HTMLTextAreaElement
+  ) {
+    return;
+  }
+  if (!state.handEnabled && state.splat) applyFit();
+});
 
 // ---------------------------------------------------------------- 逐帧更新
 
@@ -601,10 +667,16 @@ function frame(now) {
     }
     fallbackHand.tick(dt, now);
   } else {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    // 相机退到场景外，滚轮推拉相机而不是改视场角
-    updateGenericCamera(state.zoom);
-    camera.quaternion.identity();
+    if (camera.aspect !== window.innerWidth / window.innerHeight) {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+    }
+
+    // 轨道控制器负责拖动旋转 / 滚轮缩放 / 右键平移
+    if (state.splat && controls.enabled) {
+      controls.update();
+      updateClipping();
+    }
 
     // 自旋：只改模型自身姿态
     if (state.spin) state.spinAngle += dt * 0.5;
@@ -648,6 +720,7 @@ els.btnSpin.addEventListener("click", () => {
 els.btnReset.addEventListener("click", () => {
   state.spinAngle = 0;
   state.zoom = 1;
+  if (!state.handEnabled && state.splat) applyFit();
 });
 
 window.addEventListener("dragover", (event) => {
@@ -666,13 +739,18 @@ window.addEventListener("drop", (event) => {
 
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
-  applyFit();
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  controls.handleResize();
+  // 保留用户当前的视角，只更新裁剪面
+  if (!state.handEnabled && state.splat && controls.enabled) {
+    controls.update();
+    updateClipping();
+  }
 });
 
 // 方便在控制台里调试
-window.__demo = { THREE, scene, camera, renderer, splatRenderer, pivot, orient, holder, state, loadSplat };
+window.__demo = { THREE, scene, camera, controls, renderer, splatRenderer, pivot, orient, holder, state, loadSplat };
 window.__hand = {
   get rig() {
     for (const slot of manoRigs) {

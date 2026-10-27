@@ -73,6 +73,9 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 
 - `web/index.html` → `/src/main.js`. `main.js` depends on fixed DOM ids in index.html
   (`#model-status`, `#btn-hand`, `#file-input`, etc.); check the `els` table before changing the page.
+- `#canvas-host` must keep `pointer-events: auto` so `OrbitControls` receives drag and wheel events.
+  `#hud` is a transparent overlay (`pointer-events: none`) whose panels opt back in with
+  `pointer-events: auto`, so buttons stay clickable.
 - `web/src/viewer.js` + `ply-detect.js` are a **standalone prototype** that no page imports: they support
   3DGS PLY, mesh PLY with faces, and point-cloud PLY without faces. `viewer.js` expects a DOM that
   index.html does not have (`#stats`, `#btn-open`, `#url-input`, etc.). Do not assume it runs; wiring it up
@@ -92,9 +95,13 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
   and bounding sphere, translates the model to the center, then derives the camera distance from the
   bounding sphere + FOV. **The model itself is never scaled**, preserving the reconstruction's original
   scale.
-- Camera: the wheel changes `state.zoom` (0.5–3) and dollies the camera; it does not change FOV.
-  `updateGenericCamera()` sets `near/far` from the bounding sphere every frame. This works for model
-  scales from millimeters to kilometers.
+- Camera: `TrackballControls` uses left-drag free rotation, wheel dolly, and middle-drag pan; right is
+  unbound. Trackball (rather than `OrbitControls`) is deliberate: orbit controls clamp the polar angle at
+  the top/bottom, which feels like an invisible wall when tumbling past the poles. `F` re-fits the model.
+  `applyFit()` sets the initial distance, target, and `camera.up`; `updateClipping()` derives `near/far`
+  from the camera distance every frame, so model scales from millimeters to kilometers stay visible.
+  Hand mode disables the controls, fixes the camera at the origin, and restores the saved position, up
+  vector, and target on exit.
 - Up axis: the default assumes OpenCV/COLMAP (+Y down) and flips 180° around X; `?up=1` skips the flip,
   and the “Flip” toolbar button toggles it manually.
 - Only three URL parameters: `?model=` (a filename under `web/public/models/` or a full URL), `?hand=1`,

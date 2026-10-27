@@ -55,7 +55,9 @@ body {
   position: fixed;
   inset: 0;
   z-index: 1;
-  pointer-events: none;
+  /* OrbitControls 需要 canvas 接收拖拽/滚轮事件；HUD 面板在其上，
+     空白区域通过 #hud 的 pointer-events: none 继续透传。 */
+  pointer-events: auto;
 }
 
 #canvas-host canvas {
