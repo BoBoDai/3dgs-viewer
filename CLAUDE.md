@@ -83,8 +83,11 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 
 ### Model loading and framing (main.js)
 
-- Scene hierarchy: `pivot` (whole-model position) → `orient` (up-axis flip) → `holder` (spin).
-  `GaussianSplatRenderer` is attached directly to `scene`.
+- Scene hierarchy: `pivot` (whole-model position and spin) → `orient` (up-axis flip) → `holder` (model
+  container). `GaussianSplatRenderer` is attached directly to `scene`.
+- Spin: when `state.spin` is on, `pivot.quaternion` is premultiplied by a small delta around
+  `camera.up`, so the turntable axis is the current **screen vertical**, not the model's local Y. Do not
+  move this back to `holder.rotation.y`; after pitching or panning that axis stops matching the page.
 - The renderer deliberately uses `antialias: false` (splats do not need MSAA), `preBlurAmount: 0`, and
   `blurAmount: 0.3` to avoid a white halo around Gaussian outlines.
 - Loading: `new SplatMesh({ file | url })` → `await mesh.initialized`. Supports `.ply` as well as
@@ -95,9 +98,12 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
   and bounding sphere, translates the model to the center, then derives the camera distance from the
   bounding sphere + FOV. **The model itself is never scaled**, preserving the reconstruction's original
   scale.
-- Camera: `TrackballControls` uses left-drag free rotation, wheel dolly, and middle-drag pan; right is
-  unbound. Trackball (rather than `OrbitControls`) is deliberate: orbit controls clamp the polar angle at
-  the top/bottom, which feels like an invisible wall when tumbling past the poles. `F` re-fits the model.
+- Camera: `TrackballControls` uses left-drag free rotation and wheel dolly; right is unbound. Trackball
+  (rather than `OrbitControls`) is deliberate: orbit controls clamp the polar angle at the top/bottom,
+  which feels like an invisible wall when tumbling past the poles. Middle-drag pan is **not**
+  TrackballControls' built-in pan (`noPan = true`, `MIDDLE = null`): that one scales by screen aspect and
+  feels uneven. `main.js` implements a pointer handler that converts pixels to world units with the
+  camera FOV, giving 1:1 panning. `F` re-fits the model.
   `applyFit()` sets the initial distance, target, and `camera.up`; `updateClipping()` derives `near/far`
   from the camera distance every frame, so model scales from millimeters to kilometers stay visible.
   Hand mode disables the controls, fixes the camera at the origin, and restores the saved position, up

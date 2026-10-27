@@ -64,16 +64,70 @@ camera.position.set(0, 0, 0);
 const controls = new TrackballControls(camera, renderer.domElement);
 controls.rotateSpeed = 3.0;
 controls.zoomSpeed = 2.0;
-controls.panSpeed = 0.6;
 // CAD 手感：松手即停，不做惯性滑行
 controls.staticMoving = true;
 controls.enabled = false; // 有模型后才允许交互
 
+// 中键平移不用 TrackballControls 自带的实现：它按屏幕宽高比缩放，
+// 横竖速度不一致，手感会发飘。这里按 FOV 把像素换算成世界单位，做到 1:1。
 controls.mouseButtons = {
   LEFT: THREE.MOUSE.ROTATE,
-  MIDDLE: THREE.MOUSE.PAN,
+  MIDDLE: null,
   RIGHT: null,
 };
+controls.noPan = true;
+
+const panState = { id: null, x: 0, y: 0 };
+const panCanvas = renderer.domElement;
+const panRight = new THREE.Vector3();
+const panUp = new THREE.Vector3();
+const panDelta = new THREE.Vector3();
+
+function panCamera(dx, dy) {
+  const height = panCanvas.clientHeight || window.innerHeight;
+  const distance = camera.position.distanceTo(controls.target);
+  const scale =
+    (2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5)) / height;
+
+  panRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  panUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  panDelta
+    .set(0, 0, 0)
+    .addScaledVector(panRight, -dx * scale)
+    .addScaledVector(panUp, dy * scale);
+
+  camera.position.add(panDelta);
+  controls.target.add(panDelta);
+  controls.update();
+}
+
+panCanvas.addEventListener("pointerdown", (event) => {
+  if (!controls.enabled || event.button !== 1) return;
+  panState.id = event.pointerId;
+  panState.x = event.clientX;
+  panState.y = event.clientY;
+  panCanvas.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+
+panCanvas.addEventListener("pointermove", (event) => {
+  if (panState.id === null || event.pointerId !== panState.id) return;
+  const dx = event.clientX - panState.x;
+  const dy = event.clientY - panState.y;
+  panState.x = event.clientX;
+  panState.y = event.clientY;
+  panCamera(dx, dy);
+});
+
+const endPan = (event) => {
+  if (event.pointerId !== panState.id) return;
+  if (panCanvas.hasPointerCapture(event.pointerId)) {
+    panCanvas.releasePointerCapture(event.pointerId);
+  }
+  panState.id = null;
+};
+panCanvas.addEventListener("pointerup", endPan);
+panCanvas.addEventListener("pointercancel", endPan);
 
 // 关掉 preBlur、改用少量 blur，避免高斯轮廓外出现发白的“光晕”。
 const splatRenderer = new GaussianSplatRenderer({
@@ -83,15 +137,18 @@ const splatRenderer = new GaussianSplatRenderer({
 });
 scene.add(splatRenderer);
 
-// pivot 控制模型在画面中的位置
+// pivot 负责模型位置和自旋（自旋轴是当前屏幕竖直方向 camera.up）
 // orient 负责坐标系转换：3DGS 输出通常是 OpenCV/COLMAP 约定（+Y 向下、+Z 向前）
-// holder 负责自旋
+// holder 作为模型容器
 const pivot = new THREE.Group();
 const orient = new THREE.Group();
 const holder = new THREE.Group();
 pivot.add(orient);
 orient.add(holder);
 scene.add(pivot);
+
+// 自旋用：每帧把模型绕当前屏幕竖直方向转一个小角度
+const spinDelta = new THREE.Quaternion();
 
 pivot.position.set(0, 0, 0);
 
@@ -148,7 +205,6 @@ const state = {
   baseFov: 55, // 基准视场角
   zoom: 1,
   spin: false,
-  spinAngle: 0,
   // OpenCV/COLMAP 约定是 +Y 向下，默认做一次 X 轴 180° 翻转；
   // ?up=1 表示文件已经是 +Y 向上（例如 Blender 导出的模型）。
   upFlipped: params.get("up") !== "1",
@@ -672,15 +728,18 @@ function frame(now) {
       camera.updateProjectionMatrix();
     }
 
-    // 轨道控制器负责拖动旋转 / 滚轮缩放 / 右键平移
+    // TrackballControls 负责拖动旋转 / 滚轮缩放 / 中键平移
     if (state.splat && controls.enabled) {
       controls.update();
       updateClipping();
     }
 
-    // 自旋：只改模型自身姿态
-    if (state.spin) state.spinAngle += dt * 0.5;
-    holder.rotation.y = state.spinAngle;
+    // 自旋：绕当前屏幕竖直方向（camera.up）增量转，而不是模型自己的 Y 轴。
+    // 这样俯仰、平移之后再开自旋，转轴仍然是网页的 Y 轴。
+    if (state.spin) {
+      spinDelta.setFromAxisAngle(camera.up, dt * 0.5);
+      pivot.quaternion.premultiply(spinDelta);
+    }
   }
 
   renderer.render(scene, camera);
@@ -718,7 +777,7 @@ els.btnSpin.addEventListener("click", () => {
 });
 
 els.btnReset.addEventListener("click", () => {
-  state.spinAngle = 0;
+  pivot.quaternion.identity();
   state.zoom = 1;
   if (!state.handEnabled && state.splat) applyFit();
 });
