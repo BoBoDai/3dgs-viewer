@@ -114,9 +114,10 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
   and `?dpr=` (render pixel-ratio cap, default 1.5). `?raw` / `?fov` were removed together with SHARP.
 - Performance: DPR is capped at 1.5 and dropped to 0.7× during pointer/wheel interaction, restoring
   after 220 ms. The splat renderer uses `maxStdDev: sqrt(4)`, `minPixelRadius: 1.5`,
-  `minAlpha: 2/255`, `clipXY: 1`, and `minSortIntervalMs: 16`. Multi-million-splat models need SOG/RAD
-  LOD streaming with a splat budget (or offline pruning); a FastAPI/MLX backend can prepare assets but
-  does not change client-side FPS.
+  `minAlpha: 2/255`, `clipXY: 1`, and `minSortIntervalMs: 16`. The default scene is ~750K splats;
+  these settings mainly protect larger user models. Multi-million-splat models still need
+  LOD/streaming or remote rendering, and a FastAPI/MLX backend can prepare assets but does not change
+  client-side FPS.
 - Debug hooks: `window.__demo` (scene/camera/state/loadSplat) and
   `window.__hand` (rigs/tracker/enable/disable).
 
@@ -138,11 +139,12 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 
 ### Assets and ignored files
 
-- **No 3DGS sample models are bundled.** `web/public/models/` contains only the hand assets
-  (`mano_{right,left}.json`, `hand_landmarker.task`, `NOTICE.md`); users bring their own models or pass a
-  `?model=` URL. `loadDefaultModel()` shows “未加载模型” when no `?model=` is given.
+- **Default scene**: `web/public/models/The Fruit Bowl.sog` (13 MB, ~750K splats, CC BY 4.0;
+  attribution required, commercial use allowed). `loadDefaultModel()` loads it when no `?model=` is
+  given and falls back to “默认模型加载失败” if missing. The SOG is currently staged for commit.
 - `web/public/models/*.ply` and `web/public/wasm/` are gitignored: the model files are large, and the wasm
-  runtime is copied from `node_modules` by `scripts/setup.sh`.
+  runtime is copied from `node_modules` by `scripts/setup.sh`. `.sog` / `.spz` / `.rad` are **not**
+  ignored; the default SOG is currently staged.
 - `web/public/models/mano_{right,left}.json` and `hand_landmarker.task` are committed so hand mode works
   without extra downloads; see `web/public/models/NOTICE.md` for the MANO license note.
 - Vite maps `web/public` to the site root, so code hardcodes `/wasm` and `/models/...`.

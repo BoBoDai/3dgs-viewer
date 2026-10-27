@@ -8,6 +8,7 @@ import { ManoHandRig } from "./mano.js";
 const params = new URLSearchParams(location.search);
 const DEFAULT_FOV = 55;
 const GENERIC_MARGIN = 1.15; // 自动取景时给包围球留的边距
+const DEFAULT_MODEL = "The Fruit Bowl.sog";
 
 const els = {
   video: document.getElementById("camera"),
@@ -309,7 +310,7 @@ applyUpFlip(state.upFlipped);
 
 // ---------------------------------------------------------------- 模型加载
 
-async function loadSplat(source, label) {
+async function loadSplat(source, label, { isDefault = false } = {}) {
   if (state.handEnabled) disableHandMode();
 
   const old = state.splat;
@@ -334,6 +335,11 @@ async function loadSplat(source, label) {
     mesh?.removeFromParent();
     mesh?.dispose?.();
     const reason = error?.message || String(error);
+    if (isDefault) {
+      setModelStatus("默认模型加载失败", "warn");
+      els.hint.textContent = `无法加载默认模型：${reason}`;
+      return;
+    }
     setModelStatus(`载入失败：${label}`, "warn");
     if (/compressed|packed_position|min_scale_x|chunk/i.test(reason)) {
       els.hint.textContent =
@@ -442,14 +448,10 @@ function updateClipping() {
 }
 
 function loadDefaultModel() {
-  // 仓库不再自带 3DGS 样例。?model= 可以是 web/public/models 下的文件名，
-  // 也可以是完整的 http(s) URL；没有传就等用户拖入/选择模型。
-  const name = params.get("model");
-  if (!name) {
-    setModelStatus("未加载模型", "warn");
-    els.hint.textContent = "拖入模型，或点“载入 .ply”";
-    return Promise.resolve();
-  }
+  // ?model= 可以是 web/public/models 下的文件名，也可以是完整的 http(s) URL。
+  // 没传时加载默认 SOG；文件缺失就回退到“未加载模型”。
+  const explicit = params.get("model");
+  const name = explicit || DEFAULT_MODEL;
 
   let url;
   if (/^(https?:)?\/\//i.test(name) || /^(data|blob):/i.test(name)) {
@@ -459,7 +461,7 @@ function loadDefaultModel() {
   } else {
     url = new URL(`models/${name}`, document.baseURI).href;
   }
-  return loadSplat({ url }, name);
+  return loadSplat({ url }, name, { isDefault: !explicit });
 }
 
 // ---------------------------------------------------------------- 摄像头预览

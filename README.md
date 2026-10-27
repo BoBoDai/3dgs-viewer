@@ -16,13 +16,14 @@ scripts/setup.sh
 
 # 2. 启动前端
 cd web && npm run dev
-# 打开 http://localhost:5173/，把模型拖进页面，或点“载入 .ply”
-# 也可以 ?model=你的模型.ply，或 ?model=https://…/scene.sog
+# 打开 http://localhost:5173/：默认加载 The Fruit Bowl.sog
+# 也可以 ?model=你的模型.ply / .sog / .spz / .rad，或把模型拖进页面
 # 手部同步：点“手部同步”，或直接打开 http://localhost:5173/?hand=1
 ```
 
-仓库不附带 3DGS 样例模型：把模型放进 `web/public/models/` 后用 `?model=文件名` 打开，
-也可以直接拖进页面、用“载入 .ply”按钮选择，或给一个完整 URL。
+默认模型是 `web/public/models/The Fruit Bowl.sog`（13 MB，约 75 万 splats）。
+不想加载它时用 `?model=` 指定其他模型。其他模型放进
+`web/public/models/` 后用 `?model=文件名` 打开，也可以拖入页面或用“载入 .ply”选择。
 需要合成测试模型时，可以用 `tools/make_test_ply.py` 生成一个。
 
 支持 gaussian-splat-lite 能解码的格式：未压缩 `.ply`，以及 `.spz` / `.sog` / `.rad`。
@@ -31,6 +32,10 @@ cd web && npm run dev
 主画面只渲染模型：鼠标左键拖动旋转、滚轮缩放、按住中键拖动平移，`F` 回到初始取景，`自旋` 绕屏幕竖直轴展示模型。摄像头可选，开启后只出现在右上角的小窗里；
 点“手部同步”后主画面会切换成实时 MANO 手：最多两只、左右镜像、跟着手在画面里的位置摆；
 没有检测到手时不显示任何手模型。
+
+默认 SOG 的许可是 **CC BY 4.0**（作者 SuperDelphi，来源
+[SuperSplat](https://superspl.at/scene/d8ba72a6)）：需要署名，允许商用。
+详见 `web/public/models/NOTICE.md`。
 
 `web/public/models/mano_right.json` / `mano_left.json` 已随仓库提供，手部同步开箱即用；
 它们由 `tools/export_mano.py` 从 MANO pkl 导出。MANO 模型仅限非商业研究，推送到公开仓库
@@ -103,7 +108,7 @@ MANO 模型和由它导出的 JSON 仅限研究用途，商用前需确认 Max P
     ├── src/hand.js         # 胶囊体占位手（MANO 加载失败时兜底）
     ├── src/viewer.js       # 通用 PLY 浏览器原型（3DGS / 网格 / 点云）
     ├── src/ply-detect.js   # PLY 头部解析与类型判断
-    ├── public/models/      # 自行放入模型；hand_landmarker.task、mano_*.json
+    ├── public/models/      # 默认 SOG；hand_landmarker.task、mano_*.json
     └── index.html
 ```
 

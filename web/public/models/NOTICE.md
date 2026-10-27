@@ -1,4 +1,15 @@
-# Hand model assets
+# Bundled model assets
+
+## The Fruit Bowl (default scene)
+
+- File: `The Fruit Bowl.sog`
+- Author: SuperDelphi (https://superspl.at/user/superdelphi)
+- Source: https://superspl.at/scene/d8ba72a6
+- License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+- Requirements: attribution; commercial use is allowed. The SOG archive also contains the
+  upstream `license.txt`.
+
+## Hand model assets
 
 - `mano_left.json`, `mano_right.json` — derived from the
   [MANO](https://mano.is.tue.mpg.de/) hand model with `tools/export_mano.py`.
