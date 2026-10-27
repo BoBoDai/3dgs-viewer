@@ -32,7 +32,8 @@ body {
   top: 24px;
   right: 24px;
   width: clamp(150px, 18vw, 220px);
-  aspect-ratio: 4 / 3;
+  /* 实际比例由 JS 按摄像头分辨率写入；默认按 16:9 */
+  aspect-ratio: var(--camera-aspect, 16 / 9);
   height: auto;
   object-fit: cover;
   background: #000;

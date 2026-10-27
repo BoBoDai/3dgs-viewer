@@ -8,6 +8,7 @@ const DEFAULT_FOV = Number(params.get("fov")) || 55;
 // 模型保持 SHARP 的度量尺度与真实位置，只通过视场角“退后取景”，
 // 这样初始画面和输入照片的透视一致，不会把场景压扁。
 const FIT_FRACTION = 0.55; // 主体大约占画面高度的比例
+const GENERIC_MARGIN = 1.15; // 第三方模型自动取景时给包围球留的边距
 
 const els = {
   video: document.getElementById("camera"),
@@ -20,6 +21,7 @@ const els = {
   btnHand: document.getElementById("btn-hand"),
   btnLoad: document.getElementById("btn-load"),
   btnSpin: document.getElementById("btn-spin"),
+  btnFlip: document.getElementById("btn-flip"),
   btnReset: document.getElementById("btn-reset"),
   fileInput: document.getElementById("file-input"),
   dropOverlay: document.getElementById("drop-overlay"),
@@ -58,11 +60,10 @@ const splatRenderer = new GaussianSplatRenderer({
 scene.add(splatRenderer);
 
 // pivot 控制模型在画面中的位置
-// orient 负责坐标系转换：SHARP 输出 OpenCV 约定（+Y 向下、+Z 向前）
+// orient 负责坐标系转换：3DGS 输出通常是 OpenCV/COLMAP 约定（+Y 向下、+Z 向前）
 // holder 负责自旋
 const pivot = new THREE.Group();
 const orient = new THREE.Group();
-orient.quaternion.set(1, 0, 0, 0); // 绕 X 轴 180°，把 +Y-down/+Z-forward 转成 Three.js 的 Y-up
 const holder = new THREE.Group();
 pivot.add(orient);
 orient.add(holder);
@@ -114,13 +115,23 @@ const state = {
   splat: null,
   modelName: "",
   numSplats: 0,
+  // "sharp"：SHARP/OpenCV 约定（相机在原点、主体在 +Z），用视场角取景；
+  // "generic"：其他来源的 PLY 没有可靠相机约定，自动居中并用距离取景。
+  mode: "sharp",
   basePosition: new THREE.Vector3(0, 0, -3), // 模型在原始重建中的位置
   tanX: 0.6, // 重建点云的半张角正切，用于取景
   tanY: 0.4,
+  radius: 1, // generic 模式的包围球半径
+  baseDistance: 3, // generic 模式的相机距离
+  nearPlane: 0.01, // SHARP 模式的相机裁剪面，随模型尺度调整
+  farPlane: 200,
   baseFov: 55, // 取景后的基准视场角，滚轮在此基础上变焦
   zoom: 1,
   spin: false,
   spinAngle: 0,
+  // OpenCV/COLMAP 约定是 +Y 向下，默认做一次 X 轴 180° 翻转；
+  // ?up=1 表示文件已经是 +Y 向上（例如 Blender 导出的模型）。
+  upFlipped: params.get("up") !== "1",
   // ?raw=1 保留 SHARP 的度量尺度与原始位置，用于和输入照片对比
   raw: new URLSearchParams(location.search).has("raw"),
   handEnabled: false,
@@ -151,6 +162,35 @@ function setHandStatus(text, kind = "") {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+function splatCountText(count) {
+  if (count >= 1e6) return `${(count / 1e6).toFixed(2)}M splats`;
+  if (count >= 1e3) return `${(count / 1e3).toFixed(1)}K splats`;
+  return `${count} splats`;
+}
+
+function modelSummary() {
+  const mode = state.mode === "generic" ? " · 自动取景" : "";
+  return `${state.modelName} · ${splatCountText(state.numSplats)}${mode}`;
+}
+
+function idleHint() {
+  return state.mode === "generic"
+    ? "自动取景 · 滚轮缩放 · 自旋展示 · 方向不对可点“翻转”"
+    : "滚轮缩放 · 自旋展示 · 拖入 .ply 换模型";
+}
+
+/** 切换“Y 轴是否翻转”，用于校正第三方模型的 up 方向。 */
+function applyUpFlip(flipped) {
+  state.upFlipped = flipped;
+  // 绕 X 轴 180°：把 +Y-down/+Z-forward 转成 Three.js 的 Y-up
+  // THREE.Quaternion.set 的参数顺序是 (x, y, z, w)
+  orient.quaternion.set(flipped ? 1 : 0, 0, 0, flipped ? 0 : 1);
+  if (els.btnFlip) {
+    els.btnFlip.textContent = `翻转：${flipped ? "开" : "关"}`;
+  }
+}
+applyUpFlip(state.upFlipped);
+
 // ---------------------------------------------------------------- 模型加载
 
 async function loadSplat(source, label) {
@@ -177,40 +217,63 @@ async function loadSplat(source, label) {
     console.error(error);
     mesh?.removeFromParent();
     mesh?.dispose?.();
+    const reason = error?.message || String(error);
     setModelStatus(`载入失败：${label}`, "warn");
-    els.hint.textContent = "没找到模型？先运行 SHARP 生成 .ply，或把文件拖进窗口。";
+    if (/compressed|packed_position|min_scale_x|chunk/i.test(reason)) {
+      els.hint.textContent =
+        "这个 PLY 看起来是压缩/分块格式，解码失败。请确认文件完整，或导出未压缩 .ply / .spz / .sog / .rad。";
+    } else {
+      els.hint.textContent = `无法解码这个文件：${reason}`;
+    }
+    toast(`载入失败：${reason}`, 6000);
     return;
   }
 
   // SHARP 会散落少量远离主体的高斯，直接包围盒会被它们撑大。
-  // 用 2%~98% 分位数取“主体”范围，把主体中心挪到原点，
-  // 但保留度量尺度与原始深度——透视关系才和照片一致。
-  if (state.raw) {
+  // 用 2%~98% 分位数取“主体”范围。
+  const fit = robustFit(mesh);
+  // SHARP 的输入是单张照片：所有高斯都在 +Z 前方、且张角有限。
+  // 其他来源的 PLY 往往以场景原点为中心（相机在里面），套用这套取景会看不见模型。
+  state.mode = isSharpLike(fit) ? "sharp" : "generic";
+  // 裁剪面跟随模型尺度，避免厘米/毫米级单位的模型被固定 near/far 裁掉
+  state.nearPlane = Math.max(fit.zMin * 0.5, 1e-4);
+  state.farPlane = Math.max(fit.zMax * 2 + 1e-4, state.nearPlane * 10);
+  const useRaw = state.raw && state.mode === "sharp";
+
+  if (useRaw) {
     pivot.position.set(0, 0, 0);
     state.basePosition.set(0, 0, 0);
-  } else {
-    const { center, tanX, tanY } = robustFit(mesh);
-    mesh.position.copy(center).multiplyScalar(-1);
-    state.tanX = tanX;
-    state.tanY = tanY;
-
-    // 让主体保持在 SHARP 重建时的原始位置：pivot 放回 Rt(center)。
-    // 这样初始画面和输入照片的透视完全一致，只是用更广的视场角取景。
-    state.basePosition.set(center.x, -center.y, -center.z);
+    state.baseFov = DEFAULT_FOV;
+    applyUpFlip(true);
+  } else if (state.mode === "sharp") {
+    // SHARP 模式：把主体中心挪到原点，但保留度量尺度与原始深度，
+    // pivot 放回 Rt(center)，初始画面和输入照片的透视完全一致。
+    mesh.position.copy(fit.center).multiplyScalar(-1);
+    state.tanX = fit.tanX;
+    state.tanY = fit.tanY;
+    state.basePosition.set(fit.center.x, -fit.center.y, -fit.center.z);
     pivot.position.copy(state.basePosition);
+    applyUpFlip(true);
+    applyFit();
+  } else {
+    // 通用模式：自动居中 + 用包围球和固定视场角算出相机距离。
+    mesh.position.copy(fit.center).multiplyScalar(-1);
+    state.radius = fit.radius;
+    state.basePosition.set(0, 0, 0);
+    pivot.position.set(0, 0, 0);
+    // 每个新模型都回到默认 up 约定，避免沿用上一个模型的翻转状态
+    applyUpFlip(params.get("up") !== "1");
     applyFit();
   }
+  els.btnFlip.disabled = state.mode !== "generic";
 
   state.splat = mesh;
   state.modelName = label;
   state.numSplats = mesh.numSplats;
   holder.scale.setScalar(1);
   if (!state.handEnabled) {
-    setModelStatus(
-      `${label} · ${(state.numSplats / 1e6).toFixed(2)}M splats`,
-      "ok",
-    );
-    els.hint.textContent = "滚轮缩放 · 自旋展示 · 拖入 .ply 换模型";
+    setModelStatus(modelSummary(), "ok");
+    els.hint.textContent = idleHint();
   }
 }
 
@@ -221,6 +284,7 @@ function robustFit(mesh) {
   const zs = [];
   const ratioX = [];
   const ratioY = [];
+  let inFront = 0;
   const total = mesh.numSplats || 1;
   const stride = Math.max(1, Math.floor(total / 200000));
 
@@ -231,12 +295,27 @@ function robustFit(mesh) {
     ys.push(y);
     zs.push(z);
     if (z > 0.05) {
+      inFront += 1;
       ratioX.push(Math.abs(x) / z);
       ratioY.push(Math.abs(y) / z);
     }
   });
 
+  if (xs.length === 0) {
+    return {
+      center: new THREE.Vector3(),
+      size: new THREE.Vector3(2, 2, 2),
+      radius: 1,
+      tanX: Infinity,
+      tanY: Infinity,
+      inFrontRatio: 0,
+      zMin: 0,
+      zMax: 1,
+    };
+  }
+
   const percentile = (values, q) => {
+    if (values.length === 0) return NaN;
     values.sort((a, b) => a - b);
     const position = (values.length - 1) * q;
     const lo = Math.floor(position);
@@ -246,18 +325,44 @@ function robustFit(mesh) {
 
   const lo = new THREE.Vector3(percentile(xs, 0.02), percentile(ys, 0.02), percentile(zs, 0.02));
   const hi = new THREE.Vector3(percentile(xs, 0.98), percentile(ys, 0.98), percentile(zs, 0.98));
+  const size = hi.clone().sub(lo);
 
   return {
     center: lo.clone().add(hi).multiplyScalar(0.5),
-    size: hi.sub(lo),
-    // 重建点云的张角 ≈ 原照片的视场角，用它来做取景
-    tanX: Math.max(percentile(ratioX, 0.995), 0.2),
-    tanY: Math.max(percentile(ratioY, 0.995), 0.15),
+    size,
+    // 用“主体”包围球的半径做通用取景，离群点不会把画面撑爆
+    radius: Math.max(size.length() * 0.5, 1e-4),
+    // 重建点云的张角 ≈ 原照片的视场角，用它来做 SHARP 取景
+    tanX: percentile(ratioX, 0.995),
+    tanY: percentile(ratioY, 0.995),
+    inFrontRatio: inFront / xs.length,
+    // 主体在相机坐标系里的深度范围（SHARP 模式用来定裁剪面）
+    zMin: percentile(zs, 0.001),
+    zMax: percentile(zs, 0.999),
   };
+}
+
+/**
+ * 判断模型是否遵循 SHARP 的相机约定：高斯几乎全部落在 +Z 前方，
+ * 而且张角有限（相机在场景外，而不是被场景包住）。
+ */
+function isSharpLike(fit) {
+  return (
+    Number.isFinite(fit.tanX) &&
+    Number.isFinite(fit.tanY) &&
+    fit.center.z > 0.05 &&
+    fit.inFrontRatio > 0.95 &&
+    fit.tanX < 3 &&
+    fit.tanY < 3
+  );
 }
 
 /** 用视场角给主体“取景”，模型本身不缩放，透视保持原样 */
 function applyFit() {
+  if (state.mode === "generic") {
+    applyGenericFit();
+    return;
+  }
   if (state.raw) return;
   const tanHalf = Math.max(state.tanY, state.tanX / camera.aspect) / FIT_FRACTION;
   state.baseFov = clamp((2 * Math.atan(tanHalf) * 180) / Math.PI, 30, 90);
@@ -265,10 +370,37 @@ function applyFit() {
   camera.updateProjectionMatrix();
 }
 
+/** 通用取景：模型居中，相机退到包围球外，用固定视场角把模型装进画面。 */
+function applyGenericFit() {
+  const verticalFov = (DEFAULT_FOV * Math.PI) / 180;
+  const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
+  const halfAngle = Math.max(1e-3, Math.min(verticalFov, horizontalFov) / 2);
+  state.baseFov = DEFAULT_FOV;
+  state.baseDistance = (state.radius * GENERIC_MARGIN) / Math.sin(halfAngle);
+  camera.fov = state.baseFov;
+  updateGenericCamera(1);
+}
+
+function updateGenericCamera(zoom) {
+  const distance = state.baseDistance / zoom;
+  camera.position.set(0, 0, distance);
+  // 场景尺度可能从毫米到公里，near/far 跟着包围球走，避免裁剪。
+  camera.near = Math.max(distance - state.radius * 2, distance * 0.01);
+  camera.far = distance + state.radius * 4;
+  camera.updateProjectionMatrix();
+}
+
 function loadDefaultModel() {
-  // ?model=xxx.ply 可以加载 web/public/models 下的其他模型
+  // ?model= 可以是 web/public/models 下的文件名，也可以是完整的 http(s) URL
   const name = new URLSearchParams(location.search).get("model") || "scene.ply";
-  const url = new URL(`models/${name}`, document.baseURI).href;
+  let url;
+  if (/^(https?:)?\/\//i.test(name) || /^(data|blob):/i.test(name)) {
+    url = name;
+  } else if (name.startsWith("/")) {
+    url = new URL(name, location.origin).href;
+  } else {
+    url = new URL(`models/${name}`, document.baseURI).href;
+  }
   return loadSplat({ url }, name);
 }
 
@@ -277,6 +409,17 @@ function loadDefaultModel() {
 let cameraStream = null;
 let handTracker = null;
 let handInitPromise = null;
+
+/** 小窗比例跟随摄像头的原生分辨率，避免 16:9 画面被塞进 4:3 的框里 */
+function syncCameraAspect() {
+  const vw = els.video.videoWidth;
+  const vh = els.video.videoHeight;
+  if (!vw || !vh) return;
+  els.video.style.setProperty("--camera-aspect", `${vw} / ${vh}`);
+}
+
+els.video.addEventListener("loadedmetadata", syncCameraAspect);
+els.video.addEventListener("resize", syncCameraAspect);
 
 async function ensureCamera() {
   if (cameraStream) return true;
@@ -289,6 +432,7 @@ async function ensureCamera() {
     });
     els.video.srcObject = cameraStream;
     await els.video.play();
+    syncCameraAspect();
     els.video.classList.add("live");
     els.btnCamera.textContent = "关闭摄像头";
     return true;
@@ -403,12 +547,9 @@ function disableHandMode() {
   els.btnHand.classList.remove("primary");
   els.btnSpin.disabled = false;
   setHandStatus("关");
-  els.hint.textContent = "滚轮缩放 · 自旋展示 · 拖入 .ply 换模型";
+  els.hint.textContent = idleHint();
   if (state.splat) {
-    setModelStatus(
-      `${state.modelName} · ${(state.numSplats / 1e6).toFixed(2)}M splats`,
-      "ok",
-    );
+    setModelStatus(modelSummary(), "ok");
   } else {
     setModelStatus("未加载模型", "warn");
   }
@@ -422,8 +563,9 @@ function toggleHandMode() {
 window.addEventListener(
   "wheel",
   (event) => {
-    // 滚轮相当于推拉相机
-    state.zoom = clamp(state.zoom * (1 - Math.sign(event.deltaY) * 0.08), 0.8, 1.25);
+    // 滚轮相当于推拉相机；通用模型场景尺度不确定，给更大的推拉范围
+    const [lo, hi] = state.mode === "generic" ? [0.5, 3] : [0.8, 1.25];
+    state.zoom = clamp(state.zoom * (1 - Math.sign(event.deltaY) * 0.08), lo, hi);
   },
   { passive: true },
 );
@@ -531,12 +673,19 @@ function frame(now) {
       slot.left.tick(dt, now);
     }
     fallbackHand.tick(dt, now);
-  } else if (!state.raw) {
-    // 滚轮变焦用视场角，避免近距离缩放的透视爆炸。
-    camera.fov = clamp(state.baseFov / state.zoom, 40, 100);
+  } else {
     camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    camera.position.set(0, 0, 0);
+    if (state.mode === "generic") {
+      // 通用模型：相机退到场景外，滚轮推拉相机而不是改视场角
+      updateGenericCamera(state.zoom);
+    } else {
+      // SHARP 模型：滚轮变焦用视场角，避免近距离缩放的透视爆炸。
+      camera.fov = state.raw ? state.baseFov : clamp(state.baseFov / state.zoom, 40, 100);
+      camera.near = state.nearPlane;
+      camera.far = state.farPlane;
+      camera.position.set(0, 0, 0);
+      camera.updateProjectionMatrix();
+    }
     camera.quaternion.identity();
 
     // 模型保持居中，只改自身姿态
@@ -570,6 +719,11 @@ els.fileInput.addEventListener("change", () => {
   const file = els.fileInput.files?.[0];
   if (file) loadSplat({ file }, file.name);
   els.fileInput.value = "";
+});
+
+els.btnFlip.addEventListener("click", () => {
+  if (state.mode !== "generic") return;
+  applyUpFlip(!state.upFlipped);
 });
 
 els.btnSpin.addEventListener("click", () => {
