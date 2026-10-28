@@ -23,4 +23,4 @@ fi
 
 echo
 echo "完成。下一步："
-echo "  cd web && npm run dev              # 打开 http://localhost:5173"
+echo "  cd web && npm run dev              # 打开 http://localhost:5173/3dgs-viewer/"

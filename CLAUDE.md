@@ -35,7 +35,7 @@ scripts/setup.sh
 
 # Development / build
 cd web
-npm run dev        # vite --host, http://localhost:5173 by default
+npm run dev        # vite --host, http://localhost:5173/3dgs-viewer/ by default
 npm run build      # writes web/dist (gitignored)
 npm run preview
 
@@ -43,7 +43,7 @@ npm run preview
 cd tools/pw
 npm install
 npx playwright install chromium
-NO_PROXY=localhost,127.0.0.1,::1 node test.js "http://localhost:5173/?model=your-model.ply" /tmp/out.png
+NO_PROXY=localhost,127.0.0.1,::1 node test.js "http://localhost:5173/3dgs-viewer/?model=your-model.ply" /tmp/out.png
 NO_PROXY=localhost,127.0.0.1,::1 node track.js /tmp/hand.y4m
 
 # Tools (SOMA export needs py-soma-x)
@@ -146,7 +146,11 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
   ignored; the default SOG is tracked.
 - `soma_hand_{left,right}.json` are committed (SOMA-X, Apache 2.0) and power hand mode out of the box.
   `hand_landmarker.task` is committed for detection; see `web/public/models/NOTICE.md` for licenses.
-- Vite maps `web/public` to the site root, so code hardcodes `/wasm` and `/models/...`.
+- `web/vite.config.js` sets `base: "/3dgs-viewer/"` for the GitHub Pages project site. Runtime asset
+  paths must use `import.meta.env.BASE_URL` (wasm, hand models); never hardcode `/wasm` or `/models`.
+- `.github/workflows/deploy.yml` builds on pushes to `main`, copies the MediaPipe wasm into
+  `web/public/wasm`, and deploys `web/dist` through GitHub Actions Pages. The repository must be public
+  (Free) or on a plan that allows Pages for private repos, and Pages source must be “GitHub Actions”.
 - `web/dist`, `node_modules`, `.idea`, and `.DS_Store` are never committed.
 
 ## Conventions

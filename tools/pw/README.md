@@ -10,8 +10,8 @@ npx playwright install chromium
 
 先确保 `web` 已启动（`cd web && npm run dev`）。
 
-- `node test.js "http://localhost:5173/?model=你的模型.ply" /tmp/out.png`：加载模型并截图；
-- `node gpu.js "http://localhost:5173/?model=你的模型.ply"`：用本机 Chrome + Metal 测真实 GPU 帧率；
+- `node test.js "http://localhost:5173/3dgs-viewer/?model=你的模型.ply" /tmp/out.png`：加载模型并截图；
+- `node gpu.js "http://localhost:5173/3dgs-viewer/?model=你的模型.ply"`：用本机 Chrome + Metal 测真实 GPU 帧率；
 - `node track.js /tmp/hand.y4m`：用假摄像头视频验证手部推理、左右镜像和关节角度；
   默认进 `?hand=1`，不需要先加载 3DGS 模型。
 

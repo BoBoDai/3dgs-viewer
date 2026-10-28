@@ -3,7 +3,7 @@ const { chromium } = require("playwright");
 // 用法：node track.js [/path/to/hand.y4m] [url]
 // 第二个参数默认进 ?hand=1，自动开启摄像头和手部同步；不需要先加载模型。
 const videoPath = process.argv[2] || "/tmp/hand.y4m";
-const url = process.argv[3] || "http://localhost:5173/?hand=1";
+const url = process.argv[3] || "http://localhost:5173/3dgs-viewer/?hand=1";
 
 (async () => {
   const browser = await chromium.launch({

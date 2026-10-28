@@ -316,10 +316,11 @@ export class HandTracker {
   }
 
   async init() {
-    const vision = await FilesetResolver.forVisionTasks("/wasm");
+    const base = import.meta.env.BASE_URL;
+    const vision = await FilesetResolver.forVisionTasks(`${base}wasm/`);
     const options = {
       baseOptions: {
-        modelAssetPath: "/models/hand_landmarker.task",
+        modelAssetPath: `${base}models/hand_landmarker.task`,
         delegate: "GPU",
       },
       runningMode: "VIDEO",

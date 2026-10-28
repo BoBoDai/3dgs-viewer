@@ -459,7 +459,10 @@ function loadDefaultModel() {
   } else if (name.startsWith("/")) {
     url = new URL(name, location.origin).href;
   } else {
-    url = new URL(`models/${name}`, document.baseURI).href;
+    url = new URL(
+      `${import.meta.env.BASE_URL}models/${name}`,
+      location.origin,
+    ).href;
   }
   return loadSplat({ url }, name, { isDefault: !explicit });
 }
@@ -572,9 +575,10 @@ async function enableHandMode() {
 
   try {
     const jobs = [];
+    const base = import.meta.env.BASE_URL;
     for (const slot of handRigs) {
-      jobs.push(slot.right.load("/models/soma_hand_right.json"));
-      jobs.push(slot.left.load("/models/soma_hand_left.json"));
+      jobs.push(slot.right.load(`${base}models/soma_hand_right.json`));
+      jobs.push(slot.left.load(`${base}models/soma_hand_left.json`));
     }
     const loaded = await Promise.allSettled(jobs);
     skinnedLoaded = loaded.some((item) => item.status === "fulfilled");

@@ -16,9 +16,9 @@ scripts/setup.sh
 
 # 2. 启动前端
 cd web && npm run dev
-# 打开 http://localhost:5173/：默认加载 The Fruit Bowl.sog
+# 打开 http://localhost:5173/3dgs-viewer/：默认加载 The Fruit Bowl.sog
 # 也可以 ?model=你的模型.ply / .sog / .spz / .rad，或把模型拖进页面
-# 手部同步：点“手部同步”，或直接打开 http://localhost:5173/?hand=1
+# 手部同步：点“手部同步”，或直接打开 http://localhost:5173/3dgs-viewer/?hand=1
 ```
 
 默认模型是 `web/public/models/The Fruit Bowl.sog`（13 MB，约 75 万 splats）。
@@ -99,13 +99,16 @@ SOMA-X 的代码和发布资产是 Apache 2.0（需要署名；不能冒充真�
 
 ```
 3dgs/
+├── .github/workflows/
+│   └── deploy.yml          # GitHub Pages 构建与发布
 ├── scripts/
 │   └── setup.sh            # 环境准备：前端依赖 + MediaPipe 运行时
 ├── tools/
 │   ├── make_test_ply.py    # 生成合成 3DGS PLY，验证前端链路
-│   └── export_soma_hand.py # py-soma-x → 前端 SkinnedMesh JSON
+│   ├── export_soma_hand.py # py-soma-x → 前端 SkinnedMesh JSON
 │   └── pw/                 # Playwright 冒烟测试脚本
 └── web/
+    ├── vite.config.js      # base=/3dgs-viewer/
     ├── src/main.js         # 渲染 + 自动取景 + 摄像头 + 手部模式切换
     ├── src/skinned-hand.js # SOMA JSON → SkinnedMesh + 21 点重定向
     ├── src/hand.js         # 胶囊体占位手（SOMA 加载失败时兜底）
@@ -121,6 +124,25 @@ SOMA-X 的代码和发布资产是 Apache 2.0（需要署名；不能冒充真�
 - `?hand=1` 直接进入手部同步模式；
 - `?up=1` 表示模型已经是 +Y 向上，不做默认的 X 轴翻转；
 - `?dpr=1.5` 控制渲染倍率上限（默认 1.5；大模型可降到 1.0，清晰度优先可设 2）。
+
+## 部署到 GitHub Pages
+
+仓库公开后，`.github/workflows/deploy.yml` 会自动构建并发布到：
+
+**https://bobodai.github.io/3dgs-viewer/**
+
+步骤：
+
+1. 仓库 Settings → General → 改成 **Public**（Free 计划需要公开仓库；私有仓库需要 Pro/Team）。
+2. Settings → Pages → Build and deployment → Source 选择 **GitHub Actions**。
+3. 推送 `main`，或在 Actions 页手动运行 “Deploy to GitHub Pages”。
+
+构建时 workflow 会先把 `node_modules/@mediapipe/tasks-vision/wasm` 复制到 `public/wasm`，
+再执行 `npm run build`，并把 `web/dist` 作为 Pages artifact 发布。Vite 的 `base` 固定为
+`/3dgs-viewer/`；如果改仓库名，需要同步修改 `web/vite.config.js` 和 README 里的链接。
+
+GitHub Pages 提供 HTTPS，摄像头权限可以正常使用。默认 SOG + wasm + 手部资产约 60 MB，
+在 Pages 的单站 1 GB 限制内。
 
 ## 实测
 
