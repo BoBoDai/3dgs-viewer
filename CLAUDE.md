@@ -8,7 +8,7 @@ A browser-side 3D Gaussian Splatting viewer. `web/index.html` loads `web/src/mai
 renders 3DGS models in real time with Three.js +
 [gaussian-splat-lite](https://github.com/WilliamLiu-1997/Gaussian-Splat-Lite). The camera is optional: its
 feed is shown only in a small preview in the top-right corner, and clicking “Hand Sync” drives up to two
-mirrored skinned hands via MediaPipe → MANO.
+mirrored skinned hands via MediaPipe → SOMA-X (MANO is an optional local fallback).
 
 The repo **does not include a model-generation pipeline**. The earlier Apple SHARP single-image → 3DGS flow
 has been removed (`ml-sharp/`, `output/`, `.venv/`, `build_splat.sh`, `clean_ply.py`); bring your own model
@@ -21,12 +21,13 @@ and put it under `web/public/models/`.
 - **Camera**: `getUserMedia` only works on `localhost` or HTTPS. Even though `npm run dev` passes `--host`,
   opening the page via a LAN IP makes the browser reject camera access.
 - **Python is not needed to run the app.** Only these tools need it:
-  - `tools/export_mano.py`: Python 3 + numpy (MANO pkl → JSON);
+  - `tools/export_soma_hand.py`: `py-soma-x` (SOMA-X hand → JSON; default assets);
+  - `tools/export_mano.py`: Python 3 + numpy (optional MANO pkl → JSON);
   - `tools/make_test_ply.py`: numpy + plyfile;
   - `tools/pw/track.js`: needs a `/tmp/hand.y4m` pre-generated with ffmpeg.
-- **MANO assets**: `mano_{right,left}.json` are **not committed** (research license; gitignored).
-  Generate them locally with `tools/export_mano.py` from the pkl downloaded at the
-  [MANO website](https://mano.is.tue.mpg.de/). Until they exist, hand mode falls back to the capsule hand.
+- **Hand assets**: `soma_hand_{left,right}.json` are committed (Apache 2.0 SOMA-X, mid LOD).
+  `mano_{left,right}.json` are **not committed** (MANO research license; gitignored) and are optional.
+  If neither is present, hand mode falls back to the capsule hand.
 
 ## Commands
 
@@ -47,17 +48,19 @@ npx playwright install chromium
 NO_PROXY=localhost,127.0.0.1,::1 node test.js "http://localhost:5173/?model=your-model.ply" /tmp/out.png
 NO_PROXY=localhost,127.0.0.1,::1 node track.js /tmp/hand.y4m
 
-# Tools (any Python with numpy; -I avoids importing same-named modules from the current directory)
-python3 -I tools/export_mano.py MANO_RIGHT.pkl web/public/models/mano_right.json
-python3 -I tools/export_mano.py MANO_LEFT.pkl  web/public/models/mano_left.json
+# Tools (SOMA export needs py-soma-x; MANO export is optional)
+python -m venv /tmp/soma-venv && /tmp/soma-venv/bin/pip install py-soma-x
+/tmp/soma-venv/bin/python -I tools/export_soma_hand.py --side right --out web/public/models/soma_hand_right.json
+/tmp/soma-venv/bin/python -I tools/export_soma_hand.py --side left  --out web/public/models/soma_hand_left.json
+python3 -I tools/export_mano.py MANO_RIGHT.pkl web/public/models/mano_right.json   # optional
 python3 -I tools/make_test_ply.py web/public/models/test.ply
 ```
 
 - `scripts/setup.sh` runs `npm install`, **copies** `node_modules/@mediapipe/tasks-vision/wasm/*` into
   `web/public/wasm/`, and downloads `hand_landmarker.task` if missing. Re-run it after upgrading
   `@mediapipe/tasks-vision`, otherwise the wasm and JS versions mismatch.
-- It does **not** download 3DGS models and does **not** generate MANO JSON; without the MANO JSON, hand
-  sync falls back to the capsule placeholder hand.
+- It does **not** download 3DGS models or regenerate hand assets. The committed SOMA JSONs make hand sync
+  work out of the box; MANO JSONs are optional/local.
 - `test.js` waits for `window.__demo.state.numSplats > 0` then takes a screenshot. `track.js` plays a y4m
   through a fake camera and waits for `window.__hand.tracker().landmarker` and
   `window.__hand.rig.lastSeen > 0`.
@@ -72,7 +75,7 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 
 - `web/index.html` → `/src/main.js`. `main.js` depends on fixed DOM ids in index.html
   (`#model-status`, `#btn-hand`, `#file-input`, etc.); check the `els` table before changing the page.
-- `#canvas-host` must keep `pointer-events: auto` so `OrbitControls` receives drag and wheel events.
+- `#canvas-host` must keep `pointer-events: auto` so `TrackballControls` receives drag and wheel events.
   `#hud` is a transparent overlay (`pointer-events: none`) whose panels opt back in with
   `pointer-events: auto`, so buttons stay clickable.
 - `web/src/viewer.js` + `ply-detect.js` are a **standalone prototype** that no page imports: they support
@@ -123,12 +126,13 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 ### Hand mode (main.js + mano.js + hand.js)
 
 - `enableHandMode()`: hides `pivot`, opens the camera, loads four rigs in parallel (2 hand slots ×
-  left/right assets), and initializes `HandTracker`. If MANO assets fail, it falls back to the capsule
+  left/right assets), and initializes `HandTracker`. If SOMA assets fail, it falls back to the capsule
   hand in `hand.js`.
-- `mano.js` builds `/models/mano_{right,left}.json` into a 16-bone `SkinnedMesh`, derives each bone's
-  local quaternion from MediaPipe's `worldLandmarks`, and slerps for smoothing. The whole hand is mirrored
-  with `scale.x = -1`, and screen positions use the mirrored coordinates too, so the main view matches the
-  top-right preview.
+- `mano.js` builds `/models/soma_hand_{right,left}.json` into a 25-bone `SkinnedMesh`, derives each
+  bone's local quaternion from MediaPipe's `worldLandmarks`, and slerps for smoothing. `bones`,
+  `palmJoint`, and `subdivisions` come from the JSON; older MANO JSON (16 bones, no `bones` field)
+  falls back to the built-in `BONE_MAP`. The whole hand is mirrored with `scale.x = -1`, and screen
+  positions use the mirrored coordinates too, so the main view matches the top-right preview.
 - The hand camera is fixed at the origin, and hands sit at `HAND_Z = -0.56`. **Hand mode must explicitly
   set `camera.near = 0.01; camera.far = 20;`**; never inherit model-scale `near/far`—a large model's
   `near` can exceed the hand distance and clip the entire hand. This was a real regression after removing
@@ -144,8 +148,9 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 - `web/public/models/*.ply`, `web/public/models/mano_*.json`, and `web/public/wasm/` are gitignored:
   the model files are large and the wasm runtime is copied from `node_modules` by `scripts/setup.sh`.
   `.sog` / `.spz` / `.rad` are **not** ignored; the default SOG is tracked.
-- `hand_landmarker.task` is committed so hand mode has its detector; `mano_*.json` are local-only and
-  must be generated with `tools/export_mano.py`. See `web/public/models/NOTICE.md` for the MANO license.
+- `soma_hand_{left,right}.json` are committed (SOMA-X, Apache 2.0) and power hand mode out of the box.
+  `hand_landmarker.task` is committed for detection. `mano_*.json` are local-only; see
+  `web/public/models/NOTICE.md` for both licenses.
 - Vite maps `web/public` to the site root, so code hardcodes `/wasm` and `/models/...`.
 - `web/dist`, `node_modules`, `.idea`, and `.DS_Store` are never committed.
 
@@ -170,7 +175,7 @@ python3 -I tools/make_test_ply.py web/public/models/test.ply
 
 - **Source, docs, config and permissive assets.** Never commit `node_modules/`, `web/dist/`,
   `web/public/models/*.ply`, `web/public/models/mano_*.json`, `web/public/wasm/`, `.idea/`, or OS files.
-- **MediaPipe `hand_landmarker.task` is committed intentionally** so hand mode has its detector.
+- **SOMA-X hand JSONs and MediaPipe `hand_landmarker.task` are committed intentionally** (Apache 2.0).
   `mano_*.json` are local-only and gitignored; never commit the raw MANO pkl or the generated JSON.
   Keep `web/public/models/NOTICE.md`.
 - **No `git add -f`** to bypass `.gitignore` for generated output.

@@ -16,9 +16,9 @@ if [ ! -f web/public/models/hand_landmarker.task ]; then
     https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
 fi
 
-if [ ! -f web/public/models/mano_right.json ]; then
-  echo "提示：未找到 MANO JSON，手部同步会退回胶囊体占位手。"
-  echo "      从 MANO 官网下载 pkl 后运行 tools/export_mano.py 生成（见 README）。"
+if [ ! -f web/public/models/soma_hand_right.json ]; then
+  echo "提示：未找到 SOMA 手资产，手部同步会退回胶囊体占位手。"
+  echo "      可用 tools/export_soma_hand.py 重新导出（见 README）。"
 fi
 
 echo

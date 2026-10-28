@@ -84,7 +84,7 @@ els.canvasHost.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 
-// 给 MANO/占位手补一层环境反射，纯直射灯会让低模手看起来像塑料
+// 给 SOMA/MANO/占位手补一层环境反射，纯直射灯会让手看起来像塑料
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.35;
@@ -198,7 +198,7 @@ const spinDelta = new THREE.Quaternion();
 
 pivot.position.set(0, 0, 0);
 
-// 手部模型：优先用 MANO 蒙皮手，加载失败时退回胶囊体占位手。
+// 手部模型：优先用 SOMA-X 蒙皮手，加载失败时退回胶囊体占位手。
 // 两者的驱动接口一致，后续换成 3DGS 手时也可以复用同一套输入。
 const fallbackHand = new HandRig();
 fallbackHand.group.visible = false;
@@ -567,20 +567,20 @@ async function enableHandMode() {
   els.btnHand.classList.add("primary");
   els.btnSpin.disabled = true;
   setModelStatus("手部 · 实时同步", "ok");
-  setHandStatus("加载 MANO 手…");
+  setHandStatus("加载 SOMA 手…");
   els.hint.textContent = "把手放在摄像头前 · 手指动作实时同步 · 再点一次关闭";
 
   try {
     const jobs = [];
     for (const slot of manoRigs) {
-      jobs.push(slot.right.load("/models/mano_right.json"));
-      jobs.push(slot.left.load("/models/mano_left.json"));
+      jobs.push(slot.right.load("/models/soma_hand_right.json"));
+      jobs.push(slot.left.load("/models/soma_hand_left.json"));
     }
     const loaded = await Promise.allSettled(jobs);
     manoLoaded = loaded.some((item) => item.status === "fulfilled");
     if (!manoLoaded) {
-      console.warn("MANO 手加载失败，退回占位手", loaded);
-      toast("MANO 手加载失败，已退回占位手");
+      console.warn("SOMA 手加载失败，退回占位手", loaded);
+      toast("SOMA 手加载失败，已退回占位手");
     }
 
     hideAllHandModels();
@@ -724,7 +724,7 @@ function frame(now) {
           const twoHands = hands.length > 1;
 
           if (!manoLoaded) {
-            // MANO 加载失败：只显示一个居中的占位手
+            // SOMA 加载失败：只显示一个居中的占位手
             fallbackHand.group.visible = true;
             fallbackHand.update(
               hands[0].lm,

@@ -1,8 +1,10 @@
 import * as THREE from "three";
 
 /**
- * MANO 手（16 骨骼）→ Three.js SkinnedMesh。
- * 资产由 tools/export_mano.py 从 MANO pkl 导出成 JSON。
+ * 蒙皮手（SOMA-X 25 骨骼 / MANO 16 骨骼）→ Three.js SkinnedMesh。
+ * SOMA 资产由 tools/export_soma_hand.py 导出，MANO 资产由 tools/export_mano.py 导出。
+ * 骨骼映射、手掌关节和细分次数从 JSON 的 bones/palmJoint/subdivisions 读取；
+ * 旧 MANO JSON 没有这些字段时回退到内置 BONE_MAP。
  *
  * 驱动思路：MediaPipe 的 21 点 → 每根骨骼的目标方向 → 局部四元数；
  * 手腕的完整朝向用世界坐标系下的手部基向量求根骨骼旋转。
@@ -16,7 +18,7 @@ const SMOOTH = 0.06;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 /**
- * MANO 模板在手腕处是一个开放边界。把每个边界环用三角扇封上，
+ * 手模板在手腕处通常是一个开放边界。把每个边界环用三角扇封上，
  * 新顶点继承环上顶点的蒙皮权重，避免单独放一个腕部网格产生接缝。
  * 返回是否有边界被封闭。
  */
@@ -175,7 +177,7 @@ function mixSkinWeights(skinIndices, skinWeights, a, b) {
 }
 
 /**
- * 三角形网格的 Loop 细分。MANO 模板只有 778 个顶点，直接渲染时手指轮廓
+ * 三角形网格的 Loop 细分。手模板（MANO 778 / SOMA 2859 顶点）直接渲染时手指轮廓
  * 和腕部封口都偏硬；细分 2 次后约 1.2 万顶点，蒙皮权重在边中点做混合。
  */
 function subdivideLoop(positions, skinIndices, skinWeights, faces, iterations = 2) {
@@ -364,7 +366,7 @@ export class ManoHandRig {
   async load(url) {
     if (this.ready && this.url === url) return this;
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`MANO asset ${url}: HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`Hand asset ${url}: HTTP ${response.status}`);
     const data = await response.json();
     this.build(data);
     this.url = url;
@@ -387,7 +389,10 @@ export class ManoHandRig {
         data.joints[i * 3 + 2],
       );
     this.restJoints = data.parents.map((_, i) => joint(i));
-    this.restPalmLen = this.restJoints[4].distanceTo(this.restJoints[0]);
+    this.restPalmLen = this.restJoints[data.palmJoint ?? 4].distanceTo(
+      this.restJoints[0],
+    );
+    this.boneMap = data.bones || BONE_MAP;
 
     // 每根手指末端的虚拟指尖：取该末端骨骼权重最高的顶点里最远的那个
     const tips = {};
@@ -414,7 +419,7 @@ export class ManoHandRig {
     }
 
     this.restDirs = this.parents.map((_, i) => {
-      const map = BONE_MAP[i];
+      const map = this.boneMap[i];
       if (!map) return new THREE.Vector3(0, 1, 0);
       const [, , rs, re] = map;
       const from = this.restJoints[rs];
@@ -452,7 +457,7 @@ export class ManoHandRig {
       skinIndices,
       skinWeights,
       faces,
-      2,
+      data.subdivisions ?? 2,
     );
 
     const geometry = new THREE.BufferGeometry();
@@ -540,7 +545,7 @@ export class ManoHandRig {
 
     const worldQ = [rootQ];
     for (let i = 1; i < this.bones.length; i += 1) {
-      const map = BONE_MAP[i];
+      const map = this.boneMap[i];
       if (!map) {
         this.targetQuats[i].identity();
         worldQ[i] = worldQ[this.parents[i]].clone();
