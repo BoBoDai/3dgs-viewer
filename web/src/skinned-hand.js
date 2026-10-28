@@ -1,10 +1,9 @@
 import * as THREE from "three";
 
 /**
- * 蒙皮手（SOMA-X 25 骨骼 / MANO 16 骨骼）→ Three.js SkinnedMesh。
- * SOMA 资产由 tools/export_soma_hand.py 导出，MANO 资产由 tools/export_mano.py 导出。
- * 骨骼映射、手掌关节和细分次数从 JSON 的 bones/palmJoint/subdivisions 读取；
- * 旧 MANO JSON 没有这些字段时回退到内置 BONE_MAP。
+ * SOMA-X 蒙皮手（25 关节）→ Three.js SkinnedMesh。
+ * 资产由 tools/export_soma_hand.py 导出。
+ * 骨骼映射、手掌关节和细分次数从 JSON 的 bones/palmJoint/subdivisions 读取。
  *
  * 驱动思路：MediaPipe 的 21 点 → 每根骨骼的目标方向 → 局部四元数；
  * 手腕的完整朝向用世界坐标系下的手部基向量求根骨骼旋转。
@@ -177,7 +176,7 @@ function mixSkinWeights(skinIndices, skinWeights, a, b) {
 }
 
 /**
- * 三角形网格的 Loop 细分。手模板（MANO 778 / SOMA 2859 顶点）直接渲染时手指轮廓
+ * 三角形网格的 Loop 细分。SOMA 手模板 2859 顶点，直接渲染时手指轮廓
  * 和腕部封口都偏硬；细分 2 次后约 1.2 万顶点，蒙皮权重在边中点做混合。
  */
 function subdivideLoop(positions, skinIndices, skinWeights, faces, iterations = 2) {
@@ -313,30 +312,10 @@ function subdivideLoop(positions, skinIndices, skinWeights, faces, iterations = 
   return { positions: p, skinIndices: si, skinWeights: sw, faces: f };
 }
 
-// MANO 骨骼 → MediaPipe 关键点 + MANO 静止关节。
-// end 为 null 时，静止方向用指尖顶点计算。
-const BONE_MAP = {
-  1: [5, 6, 1, 2],
-  2: [6, 7, 2, 3],
-  3: [7, 8, 3, null],
-  4: [9, 10, 4, 5],
-  5: [10, 11, 5, 6],
-  6: [11, 12, 6, null],
-  7: [17, 18, 7, 8],
-  8: [18, 19, 8, 9],
-  9: [19, 20, 9, null],
-  10: [13, 14, 10, 11],
-  11: [14, 15, 11, 12],
-  12: [15, 16, 12, null],
-  13: [2, 3, 13, 14],
-  14: [3, 4, 14, 15],
-  // 15: 拇指末端没有下一根骨骼，保持静止
-};
-
 // MediaPipe worldLandmarks: x 右、y 下、z 朝场景里。转到 Three.js 的 x 右、y 上、z 朝镜头。
 const toThree = (p) => new THREE.Vector3(p.x, -p.y, -p.z);
 
-export class ManoHandRig {
+export class SkinnedHandRig {
   constructor() {
     this.group = new THREE.Group();
     this.targetPos = new THREE.Vector3(0, 0.025, HAND_Z);
@@ -389,47 +368,19 @@ export class ManoHandRig {
         data.joints[i * 3 + 2],
       );
     this.restJoints = data.parents.map((_, i) => joint(i));
-    this.restPalmLen = this.restJoints[data.palmJoint ?? 4].distanceTo(
+    this.restPalmLen = this.restJoints[data.palmJoint ?? 11].distanceTo(
       this.restJoints[0],
     );
-    this.boneMap = data.bones || BONE_MAP;
-
-    // 每根手指末端的虚拟指尖：取该末端骨骼权重最高的顶点里最远的那个
-    const tips = {};
-    const wrist = this.restJoints[0];
-    for (let v = 0; v < data.skinIndices.length / 4; v += 1) {
-      let bestJoint = -1;
-      let bestWeight = 0;
-      for (let k = 0; k < 4; k += 1) {
-        const idx = data.skinIndices[v * 4 + k];
-        const w = data.skinWeights[v * 4 + k];
-        if (w > bestWeight) {
-          bestWeight = w;
-          bestJoint = idx;
-        }
-      }
-      if (![3, 6, 9, 12, 15].includes(bestJoint)) continue;
-      const p = new THREE.Vector3(
-        data.vertices[v * 3],
-        data.vertices[v * 3 + 1],
-        data.vertices[v * 3 + 2],
-      );
-      const d = p.distanceTo(wrist);
-      if (!tips[bestJoint] || d > tips[bestJoint].d) tips[bestJoint] = { p, d };
+    if (!Array.isArray(data.bones)) {
+      throw new Error("Hand asset missing bones mapping");
     }
+    this.boneMap = data.bones;
 
     this.restDirs = this.parents.map((_, i) => {
       const map = this.boneMap[i];
       if (!map) return new THREE.Vector3(0, 1, 0);
       const [, , rs, re] = map;
-      const from = this.restJoints[rs];
-      let to;
-      if (re === null) {
-        to = tips[rs]?.p ?? this.restJoints[rs].clone().add(new THREE.Vector3(0, 0.02, 0));
-      } else {
-        to = this.restJoints[re];
-      }
-      const d = to.clone().sub(from);
+      const d = this.restJoints[re].clone().sub(this.restJoints[rs]);
       return d.lengthSq() > 1e-12 ? d.normalize() : new THREE.Vector3(0, 1, 0);
     });
 
@@ -457,7 +408,7 @@ export class ManoHandRig {
       skinIndices,
       skinWeights,
       faces,
-      data.subdivisions ?? 2,
+      data.subdivisions ?? 1,
     );
 
     const geometry = new THREE.BufferGeometry();

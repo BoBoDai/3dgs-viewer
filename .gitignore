@@ -14,11 +14,7 @@ web/dist/
 # 模型文件（体积大，按需准备）
 web/public/models/*.ply
 
-# MANO 派生资产：仅本地生成，受研究许可限制，不入库
-web/public/models/mano_*.json
-
 # MediaPipe wasm 运行时（setup.sh 从 node_modules 复制）
 web/public/wasm/
 
-# 注意：mano_*.json 与 hand_landmarker.task 随仓库提交，保证手部开箱即用；
-# MANO 派生资产仍受研究许可限制，见 web/public/models/NOTICE.md。
+# 注意：soma_hand_*.json 与 hand_landmarker.task 随仓库提交，保证手部开箱即用。

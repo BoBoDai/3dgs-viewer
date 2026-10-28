@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export a SOMA-X hand to the JSON schema consumed by web/src/mano.js.
+"""Export a SOMA-X hand to the JSON schema consumed by web/src/skinned-hand.js.
 
 Usage:
   python tools/export_soma_hand.py --side right --out web/public/models/soma_hand_right.json

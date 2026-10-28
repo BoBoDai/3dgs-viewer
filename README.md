@@ -6,7 +6,7 @@
 | 环节 | 选型 | 作用 |
 | --- | --- | --- |
 | 加载 / 变换 / 渲染 | [gaussian-splat-lite](https://github.com/WilliamLiu-1997/Gaussian-Splat-Lite) + Three.js | 解码 3DGS，WebGL2 实时渲染 |
-| 手部输入 | [MediaPipe HandLandmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker) + [SOMA-X](https://github.com/NVlabs/SOMA-X) | 浏览器内 21 点手部关键点 → SOMA-X 蒙皮手（MANO 可选） |
+| 手部输入 | [MediaPipe HandLandmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker) + [SOMA-X](https://github.com/NVlabs/SOMA-X) | 浏览器内 21 点手部关键点 → SOMA-X 蒙皮手 |
 
 ## 快速开始
 
@@ -48,9 +48,7 @@ python3 -m venv /tmp/soma-venv
 /tmp/soma-venv/bin/python -I tools/export_soma_hand.py --side left  --out web/public/models/soma_hand_left.json
 ```
 
-MANO 仍可作为本地可选资产：`mano_*.json` 受研究许可限制、已 gitignore，
-需要用 MANO pkl 运行 `tools/export_mano.py` 生成。SOMA-X 的许可与使用限制见
-`web/public/models/NOTICE.md`。
+SOMA-X 的许可与使用限制见 `web/public/models/NOTICE.md`。
 
 ## 自动取景
 
@@ -79,7 +77,7 @@ MANO 仍可作为本地可选资产：`mano_*.json` 受研究许可限制、已 
 - Python/FastAPI 后端适合做这些离线预处理和分发，但不参与浏览器每帧渲染；
   服务端渲染 + 视频串流是另一套架构。
 
-## 实时手部同步（SOMA-X / MANO 手）
+## 实时手部同步（SOMA-X 手）
 
 点 `手部同步` 或打开 `?hand=1`，会把 MediaPipe 的 21 个关键点映射到最多两只 SOMA-X 蒙皮手：
 
@@ -91,12 +89,11 @@ MANO 仍可作为本地可选资产：`mano_*.json` 受研究许可限制、已 
 6. **重定向**：用 `worldLandmarks` 的 3D 方向算每根骨骼的局部四元数，手腕的完整朝向用世界坐标系下的手部基向量求根骨骼旋转；
 7. **平滑**：骨骼四元数做 slerp。
 
-如果 SOMA/MANO JSON 加载失败，会退回 `web/src/hand.js` 里的胶囊体关节手（只支持单只、居中）。
+如果 SOMA JSON 加载失败，会退回 `web/src/hand.js` 里的胶囊体关节手（只支持单只、居中）。
 当前手仍然是**通用手模型**，不是 3DGS 手，也不是你本人的外观；下一步换成带骨骼权重的
 3DGS 手时，这套推理和重定向可以复用。页面 HUD 里的“追踪中 · X ms”是单帧推理耗时。
 
-SOMA-X 的代码和发布资产是 Apache 2.0（需要署名；不能冒充真人或用于欺骗生物识别）；
-MANO 模型和由它导出的 JSON 仅限研究用途，商用前需确认 Max Planck 的许可条款。
+SOMA-X 的代码和发布资产是 Apache 2.0（需要署名；不能冒充真人或用于欺骗生物识别）。
 
 ## 文件结构
 
@@ -106,16 +103,15 @@ MANO 模型和由它导出的 JSON 仅限研究用途，商用前需确认 Max P
 │   └── setup.sh            # 环境准备：前端依赖 + MediaPipe 运行时
 ├── tools/
 │   ├── make_test_ply.py    # 生成合成 3DGS PLY，验证前端链路
-│   ├── export_soma_hand.py # py-soma-x → 前端 SkinnedMesh JSON（默认）
-│   ├── export_mano.py      # MANO pkl → 前端 SkinnedMesh JSON（可选）
+│   └── export_soma_hand.py # py-soma-x → 前端 SkinnedMesh JSON
 │   └── pw/                 # Playwright 冒烟测试脚本
 └── web/
     ├── src/main.js         # 渲染 + 自动取景 + 摄像头 + 手部模式切换
-    ├── src/mano.js         # SOMA/MANO JSON → SkinnedMesh + 21 点重定向
-    ├── src/hand.js         # 胶囊体占位手（蒙皮手加载失败时兜底）
+    ├── src/skinned-hand.js # SOMA JSON → SkinnedMesh + 21 点重定向
+    ├── src/hand.js         # 胶囊体占位手（SOMA 加载失败时兜底）
     ├── src/viewer.js       # 通用 PLY 浏览器原型（3DGS / 网格 / 点云）
     ├── src/ply-detect.js   # PLY 头部解析与类型判断
-    ├── public/models/      # 默认 SOG、SOMA 手 JSON；hand_landmarker.task；MANO 可选
+    ├── public/models/      # 默认 SOG、SOMA 手 JSON；hand_landmarker.task
     └── index.html
 ```
 
@@ -133,10 +129,10 @@ Chrome + Metal，1280×800，约 1.04M splats 可稳定 60 fps。
 ## 限制
 
 - 单个视角重建的 3DGS 只在原视角附近可信，转到侧面会明显劣化。
-- 手部同步目前是通用 SOMA-X 蒙皮手（可切换 MANO），不是 3DGS 手，也不是你本人的外观；左右手标签来自 MediaPipe，掌心/手背判断是近似值。
+- 手部同步目前是通用 SOMA-X 蒙皮手，不是 3DGS 手，也不是你本人的外观；左右手标签来自 MediaPipe，掌心/手背判断是近似值。
 - 两只手靠得很近时模型会重叠；这是按真实手在画面里的位置摆放的结果。
 - 单摄像头只能看到手的一面，换成 3DGS 手后手背细节会缺失；要完整外观需要多角度采集和离线训练。
-- SOMA-X 资产为 Apache 2.0，需署名并遵守其使用限制；MANO 模型和导出的 JSON 仅限研究用途，商用前需确认许可条款。
+- SOMA-X 资产为 Apache 2.0，需署名并遵守其使用限制（不能冒充真人或用于欺骗生物识别）。
 - 用 `web/dist` 部署时，`public/models/*.ply` 体积较大（每个约 60 MB），建议按需加载或转成压缩格式（SPZ/SOG）。
 
 ## 参考
@@ -144,4 +140,3 @@ Chrome + Metal，1280×800，约 1.04M splats 可稳定 60 fps。
 - gaussian-splat-lite: [GitHub](https://github.com/WilliamLiu-1997/Gaussian-Splat-Lite) · [npm](https://www.npmjs.com/package/gaussian-splat-lite)
 - MediaPipe HandLandmarker: [文档](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker)
 - SOMA-X: [GitHub](https://github.com/NVlabs/SOMA-X)（Apache 2.0）
-- MANO: [官网](https://mano.is.tue.mpg.de/)（可选；模型需要注册下载，研究用途许可）

@@ -3,7 +3,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { GaussianSplatRenderer, SplatMesh } from "gaussian-splat-lite";
 import { HandRig, HandTracker } from "./hand.js";
-import { ManoHandRig } from "./mano.js";
+import { SkinnedHandRig } from "./skinned-hand.js";
 
 const params = new URLSearchParams(location.search);
 const DEFAULT_FOV = 55;
@@ -84,7 +84,7 @@ els.canvasHost.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 
-// 给 SOMA/MANO/占位手补一层环境反射，纯直射灯会让手看起来像塑料
+// 给 SOMA/占位手补一层环境反射，纯直射灯会让手看起来像塑料
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.35;
@@ -207,22 +207,22 @@ scene.add(fallbackHand.group);
 
 // 两个手位，每个手位都有左手/右手资产。最多同时显示两只手。
 // 实际右手用左手资产、实际左手用右手资产，得到和右上角镜像预览一致的“镜像手”。
-const manoRigs = [
-  { right: new ManoHandRig(), left: new ManoHandRig() },
-  { right: new ManoHandRig(), left: new ManoHandRig() },
+const handRigs = [
+  { right: new SkinnedHandRig(), left: new SkinnedHandRig() },
+  { right: new SkinnedHandRig(), left: new SkinnedHandRig() },
 ];
-for (const slot of manoRigs) {
+for (const slot of handRigs) {
   scene.add(slot.right.group);
   scene.add(slot.left.group);
 }
 
-let manoLoaded = false;
+let skinnedLoaded = false;
 let lastHandSeen = 0;
 const HAND_HIDE_AFTER = 300;
 
 function hideAllHandModels() {
   fallbackHand.group.visible = false;
-  for (const slot of manoRigs) {
+  for (const slot of handRigs) {
     slot.right.group.visible = false;
     slot.left.group.visible = false;
   }
@@ -572,20 +572,20 @@ async function enableHandMode() {
 
   try {
     const jobs = [];
-    for (const slot of manoRigs) {
+    for (const slot of handRigs) {
       jobs.push(slot.right.load("/models/soma_hand_right.json"));
       jobs.push(slot.left.load("/models/soma_hand_left.json"));
     }
     const loaded = await Promise.allSettled(jobs);
-    manoLoaded = loaded.some((item) => item.status === "fulfilled");
-    if (!manoLoaded) {
+    skinnedLoaded = loaded.some((item) => item.status === "fulfilled");
+    if (!skinnedLoaded) {
       console.warn("SOMA 手加载失败，退回占位手", loaded);
       toast("SOMA 手加载失败，已退回占位手");
     }
 
     hideAllHandModels();
     fallbackHand.relaxTargets();
-    for (const slot of manoRigs) {
+    for (const slot of handRigs) {
       slot.right.relaxTargets();
       slot.left.relaxTargets();
     }
@@ -608,7 +608,7 @@ function disableHandMode() {
   state.handEnabled = false;
   hideAllHandModels();
   fallbackHand.relaxTargets();
-  for (const slot of manoRigs) {
+  for (const slot of handRigs) {
     slot.right.relaxTargets();
     slot.left.relaxTargets();
   }
@@ -723,7 +723,7 @@ function frame(now) {
           hideAllHandModels();
           const twoHands = hands.length > 1;
 
-          if (!manoLoaded) {
+          if (!skinnedLoaded) {
             // SOMA 加载失败：只显示一个居中的占位手
             fallbackHand.group.visible = true;
             fallbackHand.update(
@@ -738,9 +738,9 @@ function frame(now) {
               const hand = hands[slot];
               // 用同侧资产，再对整只手做水平镜像：方向和摄像头里的手一致
               const modelSide = hand.label === "Left" ? "left" : "right";
-              let rig = manoRigs[slot]?.[modelSide];
+              let rig = handRigs[slot]?.[modelSide];
               if (!rig?.ready) {
-                rig = manoRigs[slot]?.[modelSide === "left" ? "right" : "left"];
+                rig = handRigs[slot]?.[modelSide === "left" ? "right" : "left"];
               }
               if (!rig?.ready) continue;
 
@@ -771,7 +771,7 @@ function frame(now) {
       setHandStatus("未检测到手", "warn");
     }
 
-    for (const slot of manoRigs) {
+    for (const slot of handRigs) {
       slot.right.tick(dt, now);
       slot.left.tick(dt, now);
     }
@@ -866,27 +866,14 @@ window.addEventListener("resize", () => {
 window.__demo = { THREE, scene, camera, controls, renderer, splatRenderer, pivot, orient, holder, state, loadSplat };
 window.__hand = {
   get rig() {
-    for (const slot of manoRigs) {
+    for (const slot of handRigs) {
       for (const side of ["right", "left"]) {
         if (slot[side].group.visible) return slot[side];
       }
     }
     return fallbackHand;
   },
-  get mano() {
-    for (const slot of manoRigs) {
-      for (const side of ["right", "left"]) {
-        if (slot[side].group.visible) return slot[side];
-      }
-    }
-    for (const slot of manoRigs) {
-      for (const side of ["right", "left"]) {
-        if (slot[side].ready) return slot[side];
-      }
-    }
-    return null;
-  },
-  manoRigs,
+  handRigs,
   fallback: fallbackHand,
   tracker: () => handTracker,
   enable: enableHandMode,

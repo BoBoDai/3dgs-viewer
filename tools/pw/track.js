@@ -46,9 +46,9 @@ const url = process.argv[3] || "http://localhost:5173/?hand=1";
           status: document.getElementById("hand-status").textContent,
           fps: document.getElementById("fps").textContent,
           inferenceMs: +(window.__hand.tracker()?.lastMs || 0).toFixed(1),
-          active: rig === window.__hand.fallback ? "fallback" : "mano",
+          active: rig === window.__hand.fallback ? "fallback" : "skinned",
           model: rig.url || null,
-          visibleModels: window.__hand.manoRigs
+          visibleModels: window.__hand.handRigs
             .flatMap((slot) => [slot.right, slot.left])
             .filter((r) => r.group.visible)
             .map((r) => r.url),

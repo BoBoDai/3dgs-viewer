@@ -16,11 +16,6 @@
   `tools/export_soma_hand.py`. SOMA-X code and released model artifacts are
   Apache 2.0; attribution required. Upstream use restrictions apply (no
   impersonating real individuals, no deception/biometric misuse).
-- `mano_left.json`, `mano_right.json` — derived from the
-  [MANO](https://mano.is.tue.mpg.de/) hand model with `tools/export_mano.py`.
-  They are **not included in this repository**; generate them locally from the
-  MANO pkl if needed. MANO is licensed for non-commercial research; check the
-  upstream terms before commercial use or redistribution.
 - `hand_landmarker.task` — MediaPipe HandLandmarker model, also downloaded by
   `scripts/setup.sh` and committed here for out-of-the-box use. See the
   [MediaPipe model card](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker)
